@@ -1,17 +1,20 @@
-![Test Workflow](https://github.com/PolymathicAI/the_well/actions/workflows/tests.yaml/badge.svg)
-
-[![PyPI](https://img.shields.io/pypi/v/the_well)](https://pypi.org/project/the-well/)
-
-[![NeurIPS](https://img.shields.io/badge/NeurIPS-2024-1?logo=https%3A%2F%2Fneurips.cc%2Fstatic%2Fcore%2Fimg%2FNeurIPS-logo.svg&labelColor=68448B&color=b3b3b3)](https://openreview.net/forum?id=00Sx577BT3)
-
-
 <div align="center">
     <img src="https://raw.githubusercontent.com/PolymathicAI/the_well/master/docs/assets/images/the_well_color.svg" width="60%"/>
 </div>
 
 <br>
 
+<div align="center">
+
+![Test Workflow](https://github.com/PolymathicAI/the_well/actions/workflows/tests.yaml/badge.svg)
+[![PyPI](https://img.shields.io/pypi/v/the_well)](https://pypi.org/project/the-well/)
+[![Docs](https://img.shields.io/badge/docs-latest---?color=25005a&labelColor=grey)](https://polymathic-ai.org/the_well/)
+[![NeurIPS](https://img.shields.io/badge/NeurIPS-2024---?logo=https%3A%2F%2Fneurips.cc%2Fstatic%2Fcore%2Fimg%2FNeurIPS-logo.svg&labelColor=68448B&color=b3b3b3)](https://openreview.net/forum?id=00Sx577BT3)
+
+</div>
+
 # The Well: 15TB of Physics Simulations
+
 
 Welcome to the Well, a large-scale collection of machine learning datasets containing numerical simulations of a wide variety of spatiotemporal physical systems. The Well draws from domain scientists and numerical software developers to provide 15TB of data across 16 datasets covering diverse domains such as biological systems, fluid dynamics, acoustic scattering, as well as magneto-hydrodynamic simulations of extra-galactic fluids or supernova explosions. These datasets can be used individually or as part of a broader benchmark suite for accelerating research in machine learning and computational sciences.
 
