@@ -1,3 +1,10 @@
+![Test Workflow](https://github.com/PolymathicAI/the_well/actions/workflows/tests.yaml/badge.svg)
+
+[![PyPI](https://img.shields.io/pypi/v/the_well)](https://pypi.org/project/the-well/)
+
+[![NeurIPS](https://img.shields.io/badge/NeurIPS-2024-1?logo=https%3A%2F%2Fneurips.cc%2Fstatic%2Fcore%2Fimg%2FNeurIPS-logo.svg&labelColor=68448B&color=b3b3b3)](https://openreview.net/forum?id=00Sx577BT3)
+
+
 <div align="center">
     <img src="https://raw.githubusercontent.com/PolymathicAI/the_well/master/docs/assets/images/the_well_color.svg" width="60%"/>
 </div>
