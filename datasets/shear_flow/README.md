@@ -57,7 +57,7 @@ Table: VRMSE metrics on test sets (lower is better). Best results are shown in b
 
 **Grid type:** uniform, cartesian coordinates.
 
-**Initial conditions:** the shear field $u_x$ is composed of $n_\text{shear}$ shears uniformly spaced along the $y$ direction. Each shear is implemented with a tanh (hyperbolic tangent) $\text{tanh}(5\frac{y-y_k}{n_\text{shear}w})$ where $z_k$ is the vertical position of the shear and $w$ is a width factor.
+**Initial conditions:** the shear field $u_x$ is composed of $n_\text{shear}$ shears uniformly spaced along the $y$ direction (called "$z$" in the generation script). Each shear is implemented with a tanh (hyperbolic tangent) $\text{tanh}(5\frac{y-y_k}{n_\text{shear}w})$ where $y_k$ is the vertical position of the shear and $w$ is a width factor.
 The velocity field $u_y$ is composed of sinusoids along the $x$ direction located at the shear. These sinusoids have an exponential decay away from the shear in the $y$ direction $\text{sin}(n_\text{blobs}\pi x)\,e^{\frac{25}{w^2}|y-y_k|^2}$.
 The tracer matches the shear at initialization. The pressure is initialized to zero.
 The initial condition is thus indexed by $n_\text{shear},n_\text{blobs},w$.
@@ -75,7 +75,7 @@ The initial condition is thus indexed by $n_\text{shear},n_\text{blobs},w$.
 
 **Approximate time to generate the data:** per input parameter: $\sim 5h$, total: $\sim 25$ hours.
 
-**Hardware used to generate the data and precision used for generating the data:** 512 nodes of 96 CPU cores each with 96 tasks running in parallel, in single precision.
+**Hardware used to generate the data and precision used for generating the data:** 512 nodes of 96 CPU cores each with 96 tasks running in parallel, in double precision.
 
 ## What is interesting and challenging about the data:
 
