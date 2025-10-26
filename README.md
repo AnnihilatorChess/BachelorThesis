@@ -16,4 +16,4 @@ This project is built upon the "The Well" dataset and benchmarking framework, wh
 
    - list modifications here
 
-The original README.md from The Well repository has been preserved as the_well_README.md.
+The original `README.md` from The Well repository has been preserved as `the_well_README.md`.

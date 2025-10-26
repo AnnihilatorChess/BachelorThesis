@@ -278,11 +278,15 @@ class Trainer:
         new_losses = {}
         time_logs = {}
         time_steps = loss_values.shape[0]  # we already average over batch
-        num_time_intervals = min(time_steps, self.num_time_intervals)
-        temporal_loss_intervals = np.linspace(0, np.log(time_steps), num_time_intervals)
-        temporal_loss_intervals = [0] + [
-            int(np.exp(x)) for x in temporal_loss_intervals
-        ]
+        # num_time_intervals = min(time_steps, self.num_time_intervals)
+        # temporal_loss_intervals = np.linspace(0, np.log(time_steps), num_time_intervals)
+        # temporal_loss_intervals = [0] + [
+        #     int(np.exp(x)) for x in temporal_loss_intervals
+        # ]
+        boundaries = [0, 6, 12, 13, 30]
+        # Ensure all boundaries are within the actual rollout length and add the final step
+        temporal_loss_intervals = sorted(list(set([b for b in boundaries if b < time_steps] + [time_steps])))
+
         # Split up losses by field
         for i, fname in enumerate(field_names):
             time_logs[f"{dset_name}/{fname}_{loss_name}_rollout"] = loss_values[
@@ -460,11 +464,13 @@ class Trainer:
                 )
                 val_loss_dict |= {"valid": val_loss, "epoch": epoch}
                 wandb.log(val_loss_dict, step=epoch)
-                if self.best_val_loss is None or val_loss < self.best_val_loss:
+
+                val_vrmse = val_loss_dict[f"valid_turbulent_radiative_layer_2D/full_VRMSE_T=all"]
+                if self.best_val_loss is None or val_vrmse < self.best_val_loss:
                     self.save_model(
                         epoch, val_loss, os.path.join(self.checkpoint_folder, "best.pt")
                     )
-                    self.best_val_loss = val_loss
+                    self.best_val_loss = val_vrmse
             # Check if time for expensive validation - periodic or final
             if epoch % self.rollout_val_frequency == 0 or (epoch == self.max_epoch):
                 logger.info(
@@ -484,6 +490,10 @@ class Trainer:
                     "epoch": epoch,
                 }
                 wandb.log(rollout_val_loss_dict, step=epoch)
+
+        # load best VRMSE model
+        checkpoint = torch.load(os.path.join(self.checkpoint_folder, "best.pt"), map_location=self.device)
+        self.model.load_state_dict(checkpoint["model_state_dict"])
 
         test_loss, test_logs = self.validation_loop(
             test_dataloader,
