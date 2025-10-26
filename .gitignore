@@ -7,6 +7,7 @@ dist/
 .DS_Store
 Thumbs.db
 .idea/
+venv
 
 #Ignoring the data
 datasets/active_matter/data/

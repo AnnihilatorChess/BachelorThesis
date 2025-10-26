@@ -1,0 +1,31 @@
+
+
+INFO on turbulent_radiative_layer2D: https://polymathic-ai.org/the_well/datasets/turbulent_radiative_layer_2D/
+
+W&B website: https://wandb.ai/simon-danninger-johannes-kepler-universit-t-linz/test_fno
+
+cd C:\Users\simon\the_well\the_well\benchmark
+python train.py experiment=fno server=local data=turbulent_radiative_layer_2D
+
+Default batch_size for dataset: 64
+
+Configs changed:
+    epochs: 200 --> 20 --> 50 --> 100
+    batch_size: 64 --> 8 --> 16 --> 8
+    lr: 1E-2 --> 1E-3 --> 5E-3 --> search
+    weight_decay --> 1E-4 --> 5E-4 --> 1E-4 --> 1E-2
+
+    # enable_amp: False --> True --> does not work with FNO
+    fno_modes1: 16 --> 12, doesnt work with current code
+    fno_modes2: 16 --> 12, doesnt work with current code
+    fno_hidden_channels: 128 --> 64, doesnt work with current code
+
+
+
+Code changed:
+    training.py:
+        L281-285 commented out, replaced by rollout span of the well paper
+        L468: changed best_val loss to best_VRMSE loss, save best VRMSE loss model
+        run test with best val_VRMSE loss model
+    train.py:
+        matplotlib.use('agg') fix for thread not in main loop error
