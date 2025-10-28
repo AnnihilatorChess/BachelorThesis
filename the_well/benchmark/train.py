@@ -1,11 +1,7 @@
 import matplotlib
 matplotlib.use('Agg')
 import warnings
-warnings.filterwarnings(
-    "ignore",
-    category=DeprecationWarning,
-    message=".*datetime.datetime.utcnow().*" # Targets only warnings matching this text
-)
+warnings.filterwarnings("ignore")
 
 import logging
 import os.path as osp
