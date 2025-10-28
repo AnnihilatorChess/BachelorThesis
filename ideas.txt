@@ -27,5 +27,6 @@ Code changed:
         L281-285 commented out, replaced by rollout span of the well paper
         L468: changed best_val loss to best_VRMSE loss, save best VRMSE loss model
         run test with best val_VRMSE loss model
+        save state of lr_scheduler to checkpoint
     train.py:
         matplotlib.use('agg') fix for thread not in main loop error
