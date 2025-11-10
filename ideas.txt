@@ -11,6 +11,7 @@ Default batch_size for dataset: 64
 
 Configs changed:
     epochs: 200 --> 20 --> 50 --> 100
+    checkpoint_frequency: 20 --> 0
     batch_size: 64 --> 8 --> 16 --> 8
     lr: 1E-2 --> 1E-3 --> 5E-3 --> search
     weight_decay --> 1E-4 --> 5E-4 --> 1E-4 --> 1E-2
@@ -20,6 +21,7 @@ Configs changed:
     fno_modes2: 16 --> 12, doesnt work with current code
     fno_hidden_channels: 128 --> 64, doesnt work with current code
 
+    added boolean pushforward to trainer/defaults.yml
 
 
 Code changed:
@@ -28,5 +30,17 @@ Code changed:
         L468: changed best_val loss to best_VRMSE loss, save best VRMSE loss model
         run test with best val_VRMSE loss model
         save state of lr_scheduler to checkpoint
+        added train_one_epoch_pushforward:
+            method to train one epoch using the pushforward trick, probabilistic assignment of pushforward steps
+            helper functions: get_pushforward_probs, predict_next_step
     train.py:
         matplotlib.use('agg') fix for thread not in main loop error
+
+
+
+
+
+
+Pushforward Trick:
+    - loop over every epoch for len(trajectory), in expectation this covers every point --> maybe look into this
+    - change n_output param based on pushforward=True/False in train.py

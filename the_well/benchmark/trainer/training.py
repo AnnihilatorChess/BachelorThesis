@@ -2,8 +2,8 @@ import logging
 import os
 import time
 from typing import Callable, Optional
+import random
 
-import numpy as np
 import torch
 import torch.distributed as dist
 import tqdm
@@ -62,6 +62,7 @@ class Trainer:
         enable_amp: bool = False,
         amp_type: str = "float16",  # bfloat not supported in FFT
         checkpoint_path: str = "",
+        pushforward: bool = False,
     ):
         """
         Class in charge of the training loop. It performs train, validation and test.
@@ -140,6 +141,7 @@ class Trainer:
         self.best_val_loss = None
         self.starting_val_loss = float("inf")
         self.dset_metadata = self.datamodule.train_dataset.metadata
+        self.pushforward = pushforward
         if self.datamodule.train_dataset.use_normalization:
             self.dset_norm = self.datamodule.train_dataset.norm
         if formatter == "channels_first_default":
@@ -281,11 +283,6 @@ class Trainer:
         new_losses = {}
         time_logs = {}
         time_steps = loss_values.shape[0]  # we already average over batch
-        # num_time_intervals = min(time_steps, self.num_time_intervals)
-        # temporal_loss_intervals = np.linspace(0, np.log(time_steps), num_time_intervals)
-        # temporal_loss_intervals = [0] + [
-        #     int(np.exp(x)) for x in temporal_loss_intervals
-        # ]
         boundaries = [0, 6, 12, 13, 30]
         # Ensure all boundaries are within the actual rollout length and add the final step
         temporal_loss_intervals = sorted(list(set([b for b in boundaries if b < time_steps] + [time_steps])))
@@ -384,6 +381,81 @@ class Trainer:
         loss_dict["param_norm"] = param_norm(self.model.parameters())
         return validation_loss, loss_dict
 
+    def get_pushforward_probs(self, epoch: int) -> list:
+        if epoch < 10:
+            return [1, 0, 0, 0]
+        if epoch < 15:
+            return [0.8, 0.2, 0, 0]
+        if epoch < 20:
+            return [0.6, 0.2, 0.2, 0]
+        else:
+            return [0.4, 0.2, 0.2, 0.2]
+
+    def predict_next_step(self, input_fields, constant_fields=None):
+        """Predicts the next step of the model."""
+        input_batch = {"input_fields": input_fields, "output_fields": torch.tensor([0.0])}
+        if constant_fields is not None:
+            input_batch["constant_fields"] = constant_fields
+
+        # this converts from shape [B, T, H, W, C] to [B, (TC), H, W]
+        inputs, _ = self.formatter.process_input(input_batch)
+
+        y_pred = self.model(*inputs)
+        y_pred = self.formatter.process_output_channel_last(y_pred)
+        y_pred = self.formatter.process_output_expand_time(y_pred)
+        return y_pred  # shape: [B, 1, H, W, C]
+
+    def train_one_epoch_pushforward(self, epoch: int, dataloader: DataLoader):
+        """Train one epoch using the PushForward Trick. Requires n_output_steps=4"""
+        self.model.train()
+        epoch_loss = 0.0
+        pushforward_steps_sum = 0
+        train_logs = {}
+        start_time = time.time()
+        pushforward_probs = self.get_pushforward_probs(epoch)
+
+        for i, batch in enumerate(dataloader):
+            pushforward_steps = random.choices([0, 1, 2, 3], pushforward_probs)[0]
+            pushforward_steps_sum += pushforward_steps
+            _, y_true_all = self.formatter.process_input(batch)
+            # we only need y_true for the last prediction
+            y_true = y_true_all[:, pushforward_steps].to(self.device)
+
+            current_input_fields = batch["input_fields"].to(self.device)
+            current_constant_fields = None
+            if "constant_fields" in batch:
+                current_constant_fields = batch["constant_fields"].to(self.device)
+            # push forward with no gradients
+            with torch.no_grad():
+                for s in range(pushforward_steps):
+                    y_pred = self.predict_next_step(current_input_fields, current_constant_fields)
+
+                    # Update moving batch, cut first and add prediction
+                    current_input_fields = torch.cat(
+                        [current_input_fields[:, 1:], y_pred], dim=1
+                    )
+            # predict based on pushforward prediction
+            y_last = self.predict_next_step(current_input_fields, current_constant_fields)
+            # loss and gradient updates
+            loss = self.loss_fn(y_last, y_true.unsqueeze(1), self.dset_metadata).mean()
+            self.grad_scaler.scale(loss).backward()
+            self.grad_scaler.step(self.optimizer)
+            self.grad_scaler.update()
+            self.optimizer.zero_grad()
+            epoch_loss += loss.item()
+
+            if i % 10 == 0:
+                logger.info(
+                    f"Epoch {epoch}, Batch {i + 1}/{len(dataloader)}: loss {loss.item()}, pushforward steps {pushforward_steps}"
+                )
+        train_logs["epoch_time"] = time.time() - start_time
+        train_logs["train_loss"] = epoch_loss/len(dataloader)
+        train_logs["avg_pushforward_steps"] = pushforward_steps_sum / len(dataloader)
+        if self.lr_scheduler:
+            self.lr_scheduler.step()
+            train_logs["lr"] = self.lr_scheduler.get_last_lr()[-1]
+        return train_logs["train_loss"], train_logs
+
     def train_one_epoch(self, epoch: int, dataloader: DataLoader) -> float:
         """Train the model for one epoch by looping over the dataloader."""
         self.model.train()
@@ -436,7 +508,10 @@ class Trainer:
                 train_dataloader.sampler.set_epoch(epoch)
             # Run training and log training results
             logger.info(f"Epoch {epoch}/{self.max_epoch}: starting training")
-            train_loss, train_logs = self.train_one_epoch(epoch, train_dataloader)
+            if self.pushforward:
+                train_loss, train_logs = self.train_one_epoch_pushforward(epoch, train_dataloader)
+            else:
+                train_loss, train_logs = self.train_one_epoch(epoch, train_dataloader)
             logger.info(
                 f"Epoch {epoch}/{self.max_epoch}: avg training loss {train_loss}"
             )
