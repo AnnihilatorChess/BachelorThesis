@@ -153,7 +153,7 @@ def main(cfg: DictConfig):
         group=f"{cfg.data.well_dataset_name}",
         config=wandb_logged_cfg,
         name=experiment_name,
-        resume=True,
+        resume=False,
     )
 
     # Retrieve multiple processes context to setup DDP
