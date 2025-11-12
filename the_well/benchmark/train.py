@@ -44,6 +44,8 @@ def train(
 ):
     """Instantiate the different objects required for training and run the training loop."""
     validation_mode = cfg.validation_mode
+    if cfg.trainer["pushforward"]:
+        cfg.data["n_steps_output_train"] = 4
     logger.info(f"Instantiate datamodule {cfg.data._target_}")
     datamodule: WellDataModule = instantiate(
         cfg.data, world_size=world_size, rank=rank, data_workers=cfg.data_workers
@@ -153,7 +155,7 @@ def main(cfg: DictConfig):
         group=f"{cfg.data.well_dataset_name}",
         config=wandb_logged_cfg,
         name=experiment_name,
-        resume=False,
+        resume=True,
     )
 
     # Retrieve multiple processes context to setup DDP

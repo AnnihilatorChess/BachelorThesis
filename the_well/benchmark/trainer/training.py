@@ -406,7 +406,7 @@ class Trainer:
         return y_pred  # shape: [B, 1, H, W, C]
 
     def train_one_epoch_pushforward(self, epoch: int, dataloader: DataLoader):
-        """Train one epoch using the PushForward Trick. Requires n_output_steps=4"""
+        """Train one epoch using the PushForward Trick. Requires n_output_steps_train=4"""
         self.model.train()
         epoch_loss = 0.0
         pushforward_steps_sum = 0
@@ -449,7 +449,7 @@ class Trainer:
                     f"Epoch {epoch}, Batch {i + 1}/{len(dataloader)}: loss {loss.item()}, pushforward steps {pushforward_steps}"
                 )
         train_logs["epoch_time"] = time.time() - start_time
-        train_logs["train_loss"] = epoch_loss/len(dataloader)
+        train_logs["train_loss"] = epoch_loss / len(dataloader)
         train_logs["avg_pushforward_steps"] = pushforward_steps_sum / len(dataloader)
         if self.lr_scheduler:
             self.lr_scheduler.step()
