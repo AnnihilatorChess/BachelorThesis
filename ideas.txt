@@ -21,8 +21,9 @@ Configs changed:
     fno_modes2: 16 --> 12, doesnt work with current code
     fno_hidden_channels: 128 --> 64, doesnt work with current code
 
-    added boolean pushforward to trainer/defaults.yml
-
+    added boolean pushforward and accompanying params to trainer/defaults.yml
+    added n_steps_output_train: int --> this is for the pushforward trick, so that val is still with 1 step prediction
+    added boolean film_naive
 
 Code changed:
     training.py:
@@ -33,8 +34,22 @@ Code changed:
         added train_one_epoch_pushforward:
             method to train one epoch using the pushforward trick, probabilistic assignment of pushforward steps
             helper functions: get_pushforward_probs, predict_next_step
+        added FiLM naive:
+            added concatenate_params helper function for FiLM naive
+            updated rollout_model, predict_next_step, train_one_epoch_pushforward for FiLM naive
+
+
     train.py:
         matplotlib.use('agg') fix for thread not in main loop error
+        added if statement to set n_steps_out_train=4 if pushforward=True
+        augment input channels by 2 for time and t_cool for FiLM naive
+    datamodule.py:
+        added a parameter for n_steps_output_train, this is set to 4 if pushforward=True, the reason for this is
+        that the val and test loaders should still only yield 1 output for comparability reasons
+    models/fno.py
+        actually using the fno blocks
+    models/tfno.py
+        actually using the fno blocks
 
 
 
@@ -43,4 +58,40 @@ Code changed:
 
 Pushforward Trick:
     - loop over every epoch for len(trajectory), in expectation this covers every point --> maybe look into this
-    - change n_output param based on pushforward=True/False in train.py
+    - change n_steps_output_train param based on pushforward=True/False in train.py
+    - linearly interpolate pushforward_steps probs with warmup epochs
+    - only enter train_one_epoch_pushforward during training
+    - data loader always gives 4 ground truth states, but we use only as many as we need (this only applies to training)
+    - this implies that the last 3 steps will almost never be predicted --> might be a problem
+
+
+FiLM (Feature wise Linear Modulation):
+    - use for time and t_cool param
+    - look if these are in the metadata of the loader
+    - create FiLM blocks or give t and t_cool as extra input
+
+Dataloader (turbulent_radiative_layer_2D) returns a batch(dict) with:
+    input_fields: (B, t, H, W, C)
+    output_fields: (B, t, H, W, C)
+    constant_scalars: (B, 1) (here is the t_cool value)
+    boundary_conditions: (B, {2}, {2}),      {} = I dont know what specifies this
+    space_grid: (B, H, W, n_spatial_dims),
+    input_time_grid: (B, t), float, same per batch
+    output_time_grid: (B, t), float same per batch
+
+Questions:
+    - preserve Config like structure
+    - pushforward last training: last few steps in rollout cause massive loss because of the n_output steps
+    - implementing the temporal bundling training will not be comparable to the baseline
+    - weird behavior of the rollout val performance at start. Is there a logic error in the implementation
+    - DID NOT USE FNO LAYERS WHAT WHAT WHAT, also probably in the paper????? strange --> one step pretty bad, but doesnt diverge
+    - wasted tuning the pushforward on the FNO/ linear transform
+
+
+Vision Transformers:
+    - MAE or some other Encoder, Decoder
+    - hybrid with some unet integration
+    - ViVit
+    - Standard ViT where the classification head is replaced by a decoder
+    - Spectral Vision Transformer --> replace axial attention with spectral attention
+    - aViT already implemented

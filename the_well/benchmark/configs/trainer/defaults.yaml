@@ -1,5 +1,5 @@
 _target_: the_well.benchmark.trainer.Trainer
-epochs: 50
+epochs: 100
 val_frequency: 1
 rollout_val_frequency: 2
 short_validation_length: 20
@@ -10,4 +10,7 @@ checkpoint_frequency: 0 # Frequency of saving checkpoints. If 0, only use best/m
 # enable_amp: True
 loss_fn: ???
 checkpoint_path: "" # This is a default that is overridden by the code
-pushforward: True
+pushforward: False
+pushforward_final_probs: [0.1, 0.3, 0.3, 0.3]
+pushforward_warmup_epochs: 6
+film_naive: False
