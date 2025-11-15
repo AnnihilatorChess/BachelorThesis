@@ -63,6 +63,9 @@ class Trainer:
         amp_type: str = "float16",  # bfloat not supported in FFT
         checkpoint_path: str = "",
         pushforward: bool = False,
+        pushforward_warmup_epochs: int = 10,
+        pushforward_final_probs: list = [0.1, 0.3, 0.3, 0.3],
+        film_naive: bool = False,
     ):
         """
         Class in charge of the training loop. It performs train, validation and test.
@@ -142,6 +145,9 @@ class Trainer:
         self.starting_val_loss = float("inf")
         self.dset_metadata = self.datamodule.train_dataset.metadata
         self.pushforward = pushforward
+        self.pushforward_warmup_epochs = pushforward_warmup_epochs
+        self.pushforward_final_probs = pushforward_final_probs
+        self.film_naive = film_naive
         if self.datamodule.train_dataset.use_normalization:
             self.dset_norm = self.datamodule.train_dataset.norm
         if formatter == "channels_first_default":
@@ -228,6 +234,17 @@ class Trainer:
             moving_batch["constant_fields"] = moving_batch["constant_fields"].to(
                 self.device
             )
+
+        # setup moving values for FiLM
+        if self.film_naive:
+            # t_cool is constant for the whole rollout, shape: [B, 1]
+            t_cool = moving_batch["constant_scalars"].to(self.device)
+
+            # get current_time and interval between time steps
+            grid_time = moving_batch["input_time_grid"].to(self.device) # [B, T_in]
+            dt = (grid_time[:, -1] - grid_time[:, -2]).unsqueeze(1) # [B, 1]
+            current_time = grid_time[:, -1].unsqueeze(1) # [B, 1]
+
         y_preds = []
         for i in range(rollout_steps):
             if not train:
@@ -235,6 +252,12 @@ class Trainer:
 
             inputs, _ = formatter.process_input(moving_batch)
             inputs = [x.to(self.device) for x in inputs]
+
+            # concat time and t_cool with in_channels for FiLM, update current_time after concatenation
+            if self.film_naive:
+                inputs[0] = self.concatenate_channels(inputs[0], t_cool, current_time, self.device)
+                current_time += dt
+
             y_pred = model(*inputs)
 
             y_pred = formatter.process_output_channel_last(y_pred)
@@ -381,17 +404,40 @@ class Trainer:
         loss_dict["param_norm"] = param_norm(self.model.parameters())
         return validation_loss, loss_dict
 
-    def get_pushforward_probs(self, epoch: int) -> list:
-        if epoch < 10:
-            return [1, 0, 0, 0]
-        if epoch < 15:
-            return [0.8, 0.2, 0, 0]
-        if epoch < 20:
-            return [0.6, 0.2, 0.2, 0]
-        else:
-            return [0.4, 0.2, 0.2, 0.2]
+    ##########################################################################
+    # added functions, here are new functions I added for Pushforward and FiLM
+    ##########################################################################
 
-    def predict_next_step(self, input_fields, constant_fields=None):
+    def concatenate_channels(self, inputs_tensor, t_cool, t, device) -> torch.Tensor:
+        """Concatenates t_cool and time with the physical input channels."""
+        B, C, H, W = inputs_tensor.shape
+
+        # converts [B, 1] -> [B, 1, H, W]
+        t_cool_channel = t_cool.view(B, 1, 1, 1).expand(B, 1, H, W).to(device)
+        # converts: [B,1 -> [B, 1, H, W]
+        time_channel = t.view(B, 1, 1, 1).expand(B, 1, H, W).to(device)
+        # concat along channel dim: -> [B, C_in + 2, H, W]
+        inputs_with_params = torch.cat([inputs_tensor, t_cool_channel, time_channel], dim=1)
+        return inputs_with_params
+
+    def get_pushforward_probs(self, epoch: int) -> list:
+        """Linearly interpolate between starting_probs and final_probs with warmup"""
+        starting_probs = [0.6, 0.2, 0.1, 0.1]
+        warmup_epochs = self.pushforward_warmup_epochs
+        if epoch < warmup_epochs:
+            return [1, 0, 0, 0]
+        progress = (epoch - warmup_epochs) / (self.max_epoch - warmup_epochs)
+
+        # linear interpolation, dont need to normalize
+        current_weights = []
+        for f_prob, s_prob in zip(self.pushforward_final_probs, starting_probs):
+            current_prob = f_prob * progress + s_prob * (1 - progress)
+            current_weights.append(current_prob)
+
+        return current_weights
+
+
+    def predict_next_step(self, input_fields, constant_fields=None, t_cool=None, t=None):
         """Predicts the next step of the model."""
         input_batch = {"input_fields": input_fields, "output_fields": torch.tensor([0.0])}
         if constant_fields is not None:
@@ -399,6 +445,9 @@ class Trainer:
 
         # this converts from shape [B, T, H, W, C] to [B, (TC), H, W]
         inputs, _ = self.formatter.process_input(input_batch)
+
+        if self.film_naive:
+            inputs[0] = self.concatenate_channels(inputs[0], t_cool, t, self.device)
 
         y_pred = self.model(*inputs)
         y_pred = self.formatter.process_output_channel_last(y_pred)
@@ -422,20 +471,34 @@ class Trainer:
             y_true = y_true_all[:, pushforward_steps].to(self.device)
 
             current_input_fields = batch["input_fields"].to(self.device)
-            current_constant_fields = None
+            constant_fields = None
             if "constant_fields" in batch:
-                current_constant_fields = batch["constant_fields"].to(self.device)
+                constant_fields = batch["constant_fields"].to(self.device)
+
+            # setup moving values for FiLM
+            t_cool = None
+            current_time = None
+            if self.film_naive:
+                # t_cool is constant for the whole rollout, shape: [B, 1]
+                t_cool = batch["constant_scalars"].to(self.device)
+
+                # get current_time and interval between time steps
+                grid_time = batch["input_time_grid"].to(self.device)  # [B, T_in]
+                dt = (grid_time[:, -1] - grid_time[:, -2]).unsqueeze(1)  # [B, 1]
+                current_time = grid_time[:, -1].unsqueeze(1)  # [B, 1]
+
             # push forward with no gradients
             with torch.no_grad():
                 for s in range(pushforward_steps):
-                    y_pred = self.predict_next_step(current_input_fields, current_constant_fields)
+                    y_pred = self.predict_next_step(current_input_fields, constant_fields, t_cool, current_time)
 
-                    # Update moving batch, cut first and add prediction
-                    current_input_fields = torch.cat(
-                        [current_input_fields[:, 1:], y_pred], dim=1
-                    )
+                    # Update moving batch, cut first and add prediction, update time for FiLM
+                    current_input_fields = torch.cat([current_input_fields[:, 1:], y_pred], dim=1)
+                    if self.film_naive:
+                        current_time += dt
+
             # predict based on pushforward prediction
-            y_last = self.predict_next_step(current_input_fields, current_constant_fields)
+            y_last = self.predict_next_step(current_input_fields, constant_fields, t_cool, current_time)
             # loss and gradient updates
             loss = self.loss_fn(y_last, y_true.unsqueeze(1), self.dset_metadata).mean()
             self.grad_scaler.scale(loss).backward()
@@ -455,6 +518,10 @@ class Trainer:
             self.lr_scheduler.step()
             train_logs["lr"] = self.lr_scheduler.get_last_lr()[-1]
         return train_logs["train_loss"], train_logs
+
+    #####################
+    # end added functions
+    #####################
 
     def train_one_epoch(self, epoch: int, dataloader: DataLoader) -> float:
         """Train the model for one epoch by looping over the dataloader."""
