@@ -11,6 +11,6 @@ checkpoint_frequency: 0 # Frequency of saving checkpoints. If 0, only use best/m
 loss_fn: ???
 checkpoint_path: "" # This is a default that is overridden by the code
 pushforward: False
-pushforward_final_probs: [0.1, 0.3, 0.3, 0.3]
-pushforward_warmup_epochs: 6
-film_naive: False
+pushforward_final_probs: [0.2, 0.2, 0.3, 0.3]
+pushforward_warmup_epochs: 30
+film_naive: True

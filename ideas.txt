@@ -86,7 +86,7 @@ Questions:
     - weird behavior of the rollout val performance at start. Is there a logic error in the implementation
     - DID NOT USE FNO LAYERS WHAT WHAT WHAT, also probably in the paper????? strange --> one step pretty bad, but doesnt diverge
     - wasted tuning the pushforward on the FNO/ linear transform
-
+    - tune hyperparams or keep to stay similar with the_well paper. Ex. weight decay, domain padding for FNO
 
 Vision Transformers:
     - MAE or some other Encoder, Decoder

@@ -422,7 +422,8 @@ class Trainer:
 
     def get_pushforward_probs(self, epoch: int) -> list:
         """Linearly interpolate between starting_probs and final_probs with warmup"""
-        starting_probs = [0.6, 0.2, 0.1, 0.1]
+        #starting_probs = [0.6, 0.2, 0.1, 0.1]
+        starting_probs = [0.8, 0.2, 0, 0, 0]
         warmup_epochs = self.pushforward_warmup_epochs
         if epoch < warmup_epochs:
             return [1, 0, 0, 0]
