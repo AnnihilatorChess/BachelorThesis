@@ -56,13 +56,19 @@ def train(
     n_input_fields = (
         cfg.data.n_steps_input * dset_metadata.n_fields
         + dset_metadata.n_constant_fields
-        + (2 if cfg.trainer["film_naive"] else 0)    # add channels for time and t_cool for FiLM
+        + (
+            (cfg.trainer["film_time"] + cfg.trainer["film_t_cool"])
+            if (cfg.trainer["film_naive"] and not cfg.trainer["film"]) else 0
+        )    # augment input channels for naive FiLM to include t_cool and/or time
     )
     n_output_fields = dset_metadata.n_fields
 
     logger.info(
         f"Instantiate model {cfg.model._target_}",
     )
+    if cfg.trainer["film"]:
+        cfg.model._target_ += "FiLM"
+
     model: torch.nn.Module = instantiate(
         cfg.model,
         n_spatial_dims=dset_metadata.n_spatial_dims,
