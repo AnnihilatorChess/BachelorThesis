@@ -39,10 +39,12 @@ Code changed:
             updated rollout_model, predict_next_step, train_one_epoch_pushforward for FiLM naive
 
 
+
     train.py:
         matplotlib.use('agg') fix for thread not in main loop error
         added if statement to set n_steps_out_train=4 if pushforward=True
         augment input channels by 2 for time and t_cool for FiLM naive
+        check if film=true, instantiate film model
     datamodule.py:
         added a parameter for n_steps_output_train, this is set to 4 if pushforward=True, the reason for this is
         that the val and test loaders should still only yield 1 output for comparability reasons
