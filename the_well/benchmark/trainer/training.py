@@ -65,10 +65,6 @@ class Trainer:
         pushforward: bool = False,
         pushforward_warmup_epochs: int = 10,
         pushforward_final_probs: list = (0.4, 0.2, 0.2, 0.2),
-        film_naive: bool = False,
-        film_naive_use_embedding: bool = True,
-        film_time: bool = True,
-        film_t_cool: bool = True,
         film: bool = False,
     ):
         """
@@ -151,10 +147,6 @@ class Trainer:
         self.pushforward = pushforward
         self.pushforward_warmup_epochs = pushforward_warmup_epochs
         self.pushforward_final_probs = pushforward_final_probs
-        self.film_naive = film_naive
-        self.film_naive_use_embedding = film_naive_use_embedding
-        self.film_t_cool = film_t_cool
-        self.film_time = film_time
         self.film = film
         if self.datamodule.train_dataset.use_normalization:
             self.dset_norm = self.datamodule.train_dataset.norm
@@ -243,19 +235,21 @@ class Trainer:
                 self.device
             )
 
-        # setup moving values for FiLM
+        # setup params for FiLM
         t_cool = None
         current_time = None
-        if self.film_naive:
-            if self.film_t_cool:
-                # t_cool is constant for the whole rollout, shape: [B, 1]
-                t_cool = moving_batch["constant_scalars"].to(self.device)
+        dt = None
+        if self.film:
+            # t_cool is constant for the whole rollout, shape: [B, 1]
+            t_cool = moving_batch["constant_scalars"].to(self.device)
+            t_cool = self.norm_t_cool(t_cool)
 
-            if self.film_time:
-                # get current_time and interval between time steps
-                grid_time = moving_batch["input_time_grid"].to(self.device) # [B, T_in]
-                dt = (grid_time[:, -1] - grid_time[:, -2]).unsqueeze(1) # [B, 1]
-                current_time = grid_time[:, -1].unsqueeze(1)# [B, 1]
+            # get current_time and interval between time steps
+            grid_time = moving_batch["input_time_grid"].to(self.device) # [B, T_in]
+            dt = (grid_time[:, -1] - grid_time[:, -2]).unsqueeze(1) # [B, 1]
+            dt = self.norm_time(dt)
+            current_time = grid_time[:, -1].unsqueeze(1) # [B, 1]
+            current_time = self.norm_time(current_time)
 
         y_preds = []
         for i in range(rollout_steps):
@@ -265,13 +259,12 @@ class Trainer:
             inputs, _ = formatter.process_input(moving_batch)
             inputs = [x.to(self.device) for x in inputs]
 
-            # concat time and t_cool with in_channels for FiLM, update current_time after concatenation
-            if self.film_naive:
-                inputs[0] = self.concatenate_channels(inputs[0], t_cool, current_time, self.device)
-                if self.film_time:
-                    current_time += dt
-
-            y_pred = model(*inputs)
+            # we have extra model inputs for the film models
+            if self.film:
+                y_pred = model(*inputs, t_cool=t_cool, time=current_time)
+                current_time += dt
+            else:
+                y_pred = model(*inputs)
 
             y_pred = formatter.process_output_channel_last(y_pred)
 
@@ -420,21 +413,19 @@ class Trainer:
     ##########################################################################
     # added functions, here are new functions I added for Pushforward and FiLM
     ##########################################################################
+    def norm_time(self, t):
+        """Time in turbulent_radiative_layer_2D is in [0, 159.7033]"""
+        return t / 159.7033
 
-    def concatenate_channels(self, inputs_tensor, t_cool, t, device) -> torch.Tensor:
-        """Concatenates t_cool and time with the physical input channels."""
-        B, C, H, W = inputs_tensor.shape
-
-        # converts [B, 1] -> [B, 1, H, W]
-        if t_cool:
-            t_cool = t_cool.view(B, 1, 1, 1).expand(B, 1, H, W).to(device)
-        # converts: [B,1 -> [B, 1, H, W]
-        if t:
-            t = t.view(B, 1, 1, 1).expand(B, 1, H, W).to(device)
-        # concat along channel dim: -> [B, C_in + params, H, W]
-        params = [p for p in [t, t_cool] if p]
-        inputs_with_params = torch.cat([inputs_tensor] + params, dim=1)
-        return inputs_with_params
+    def norm_t_cool(self, t_cool, log_scale=True):
+        """t_cool is in [0.03, 3.16]"""
+        if log_scale:
+            denom =  torch.log(3.16) - torch.log(0.03)
+            t_cool = (torch.log(t_cool) - torch.log(0.03)) / denom
+        else:
+            denom = 3.16 - 0.03
+            t_cool = (t_cool - 0.03) / denom
+        return t_cool
 
     def get_pushforward_probs(self, epoch: int) -> list:
         """Linearly interpolate between starting_probs and final_probs with warmup"""
@@ -462,10 +453,10 @@ class Trainer:
         # this converts from shape [B, T, H, W, C] to [B, (TC), H, W]
         inputs, _ = self.formatter.process_input(input_batch)
 
-        if self.film_naive:
-            inputs = self.concatenate_channels(inputs[0], t_cool, t, self.device)
-            inputs = [inputs]
-        y_pred = self.model(*inputs)
+        if self.film:
+            y_pred = self.model(*inputs, t_cool=t_cool, time=t)
+        else:
+            y_pred = self.model(*inputs)
         y_pred = self.formatter.process_output_channel_last(y_pred)
         y_pred = self.formatter.process_output_expand_time(y_pred)
         return y_pred  # shape: [B, 1, H, W, C]
@@ -491,16 +482,18 @@ class Trainer:
             # setup moving values for FiLM
             t_cool = None
             current_time = None
-            if self.film_naive:
-                if self.film_t_cool:
-                    # t_cool is constant for the whole rollout, shape: [B, 1]
-                    t_cool = batch["constant_scalars"].to(self.device)
+            dt = None
+            if self.film:
+                # t_cool is constant for the whole rollout, shape: [B, 1]
+                t_cool = batch["constant_scalars"].to(self.device)
+                t_cool = self.norm_t_cool(t_cool)
 
-                if self.film_time:
-                    # get current_time and interval between time steps
-                    grid_time = batch["input_time_grid"].to(self.device)  # [B, T_in]
-                    dt = (grid_time[:, -1] - grid_time[:, -2]).unsqueeze(1)  # [B, 1]
-                    current_time = grid_time[:, -1].unsqueeze(1)  # [B, 1]
+                # get current_time and interval between time steps
+                grid_time = batch["input_time_grid"].to(self.device)  # [B, T_in]
+                dt = (grid_time[:, -1] - grid_time[:, -2]).unsqueeze(1)  # [B, 1]
+                dt = self.norm_time(dt)
+                current_time = grid_time[:, -1].unsqueeze(1)  # [B, 1]
+                current_time = self.norm_time(current_time)
 
             # push forward with no gradients
             with torch.no_grad():
@@ -509,7 +502,7 @@ class Trainer:
 
                     # Update moving batch, cut first and add prediction, update time for FiLM
                     current_input_fields = torch.cat([current_input_fields[:, 1:], y_pred], dim=1)
-                    if self.film_naive and current_time:
+                    if self.film:
                         current_time += dt
 
             # predict based on pushforward prediction

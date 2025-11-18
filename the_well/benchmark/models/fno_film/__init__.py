@@ -3,46 +3,8 @@ import torch.nn as nn
 from neuralop.models import FNO as neuralop_FNO
 from neuralop.layers.fno_block import FNOBlocks
 
-from the_well.benchmark.models.common import BaseModel
+from the_well.benchmark.models.common import BaseModel, MLP, EmbedFeatures, FiLMLayer
 
-
-class FiLMLayer(nn.Module):
-    """This generates FiLM Layers. It returns gamma and beta from conditioning parameters"""
-    def __init__(self, t_cool_embed_dim, time_embed_dim, feature_channels, hidden_dim):
-        super().__init__()
-
-        # embed time and t_cool via MLP
-        self.time_embedding = nn.Sequential(
-            nn.Linear(1, time_embed_dim),
-            nn.GELU(),
-            nn.Linear(time_embed_dim, time_embed_dim),
-        )
-        self.t_cool_embedding = nn.Sequential(
-            nn.Linear(1, t_cool_embed_dim),
-            nn.GELU(),
-            nn.Linear(t_cool_embed_dim, t_cool_embed_dim),
-        )
-        # MLP for generating beta and gamma
-        self.generator = nn.Sequential(
-            nn.Linear(time_embed_dim + t_cool_embed_dim, hidden_dim),
-            nn.GELU(),
-            nn.Linear(hidden_dim, 2*feature_channels),
-        )
-        # Initialize gamma to 1 and beta to 0
-        nn.init.constant_(self.generator.bias[feature_channels:], 0)
-        nn.init.constant_(self.generator.bias[:feature_channels], 1)
-
-    def forward(self, t_cool, time):
-        # embed conditioning params
-        embedded_time = self.time_embedding(time)
-        embedded_t_cool = self.t_cool_embedding(t_cool)
-        conditioning_input = torch.cat([embedded_time, embedded_t_cool], dim=1)
-        # convert to gamma beta
-        gammas_betas = self.generator(conditioning_input)
-        gamma, beta = torch.chunk(gammas_betas, 2, dim=1)
-        # reshape: [B, C] --> [B, C, 1, 1]
-        gamma, beta = gamma.unsqueeze(-1).unsqueeze(-1), beta.unsqueeze(-1).unsqueeze(-1)
-        return gamma, beta
 
 class SpectralBlockFiLM(FNOBlocks):
     def __init__(self, *args, **kwargs):
@@ -90,34 +52,86 @@ class SpectralBlockFiLM(FNOBlocks):
 
 class FNOFiLM(neuralop_FNO):
     """Integrates FiLM layers into FNO."""
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fno_blocks = SpectralBlockFiLM()
+    def __init__(
+        self,
+        dim_in: int,
+        dim_out: int,
+        n_spatial_dims: int,
+        spatial_resolution: tuple[int, ...],
+        modes1: int,
+        modes2: int,
+        hidden_channels: int = 128,
+        film_naive: bool = False,
+        film_naive_use_embedding: bool = True,
+        film_time: bool = True,
+        film_t_cool: bool = True,
+    ):
+        # augment input channels of model for naive FiLM
+        if film_naive:
+            scaler = 16 if film_naive_use_embedding else 1
+            dim_in = dim_in + (film_time + film_t_cool) * scaler
 
-    def forward(self, x: torch.Tensor, output_shape=None, **kwargs):
+        super().__init__(
+            n_modes=(modes1, modes2),
+            in_channels=dim_in,
+            out_channels=dim_out,
+            hidden_channels=hidden_channels,
+        )
+        self.naive_use_embedding = film_naive_use_embedding
+        self.film_naive = film_naive
+        self.film_time = film_time
+        self.t_cool = film_t_cool
+
+        if not self.film_naive:
+            self.fno_blocks = SpectralBlockFiLM()
+
+    def forward(self, x, t_cool, time):
+        if self.film_naive:
+            return self.forward_film_naive(x, t_cool, time)
+        else:
+            return self.forward_film(x, t_cool, time)
+
+    def forward_naive(self, x, t_cool, time):
         """Forward pass from original FNO class above with new SpectralBlockFiLM"""
 
-        if output_shape is None:
-            output_shape = [None] * self.n_layers
-        elif isinstance(output_shape, tuple):
-            output_shape = [None] * (self.n_layers - 1) + [output_shape]
+        if self.naive_use_embedding:
+            pass
+        else:
+            pass
 
-        x = self.optional_checkpointing(self.lifting, x)
+        x = self.lifting(x)
 
         if self.domain_padding is not None:
             x = self.domain_padding.pad(x)
 
-
-
         for layer_idx in range(self.n_layers):
-            x = self.optional_checkpointing(
-                self.fno_blocks, x, layer_idx, output_shape=output_shape[layer_idx]
-            )
+            x = self.fno_blocks(x, layer_idx)
 
         if self.domain_padding is not None:
             x = self.domain_padding.unpad(x)
 
-
-        x = self.optional_checkpointing(self.projection, x)
+        x = self.projection(x)
 
         return x
+
+    def forward_film(self, x, t_cool, time):
+        pass
+
+    def concatenate_channels(self, inputs_tensor, t_cool, t, device) -> torch.Tensor:
+        """Concatenates t_cool and time with the physical input channels."""
+        B, C, H, W = inputs_tensor.shape
+
+        # converts [B, 1] -> [B, 1, H, W]
+        if self.film_t_cool:
+            t_cool = t_cool.view(B, 1, 1, 1).expand(B, 1, H, W).to(device)
+        else:
+            t_cool = None
+        # converts: [B,1 -> [B, 1, H, W]
+        if self.film_time:
+            t = t.view(B, 1, 1, 1).expand(B, 1, H, W).to(device)
+        else:
+            t = None
+        # concat along channel dim: -> [B, C_in + params, H, W]
+        params = [p for p in [t, t_cool] if p]
+        inputs_with_params = torch.cat([inputs_tensor] + params, dim=1)
+        return inputs_with_params
