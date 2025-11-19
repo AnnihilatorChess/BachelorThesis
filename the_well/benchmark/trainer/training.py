@@ -420,8 +420,8 @@ class Trainer:
     def norm_t_cool(self, t_cool, log_scale=True):
         """t_cool is in [0.03, 3.16]"""
         if log_scale:
-            denom =  torch.log(3.16) - torch.log(0.03)
-            t_cool = (torch.log(t_cool) - torch.log(0.03)) / denom
+            denom =  torch.log(torch.tensor([3.16])) - torch.log(torch.tensor([0.03]))
+            t_cool = (torch.log(torch.tensor([t_cool])) - torch.log(torch.tensor([0.03]))) / torch.tensor([denom])
         else:
             denom = 3.16 - 0.03
             t_cool = (t_cool - 0.03) / denom

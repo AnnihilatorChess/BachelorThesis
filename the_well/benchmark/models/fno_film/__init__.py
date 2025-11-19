@@ -3,7 +3,7 @@ import torch.nn as nn
 from neuralop.models import FNO as neuralop_FNO
 from neuralop.layers.fno_block import FNOBlocks
 
-from the_well.benchmark.models.common import BaseModel, MLP, EmbedFeatures, FiLMLayer
+from the_well.benchmark.models.common import BaseModel, MLP, EmbedFeatures, FiLMLayers
 
 
 class SpectralBlockFiLM(FNOBlocks):
@@ -79,9 +79,9 @@ class FNOFiLM(neuralop_FNO):
         self.naive_use_embedding = film_naive_use_embedding
         self.film_naive = film_naive
         self.film_time = film_time
-        self.t_cool = film_t_cool
-        mlp_in = extra_channels if film_naive else 32
-        self.embed_features = EmbedFeatures(mlp_in, 8)
+        self.film_t_cool = film_t_cool
+        output_size = extra_channels if film_naive else 32
+        self.embed_features = EmbedFeatures(output_size, 8, num_inputs=int(film_time + film_t_cool))
 
         if not self.film_naive:
             self.fno_blocks = SpectralBlockFiLM(
@@ -90,47 +90,39 @@ class FNOFiLM(neuralop_FNO):
                 n_modes = (modes1, modes2),
                 n_layers = 4,
             )
-            self.film_layer = FiLMLayer()
+            self.film_layers = FiLMLayers(n_layers=4, feature_channels=hidden_channels)
 
     def forward(self, x, t_cool, time):
+        """
+        Forward pass from original FNO class with FiLM modifications.
+        There are 3 different forward paths depending on film_naive and film_naive_use_embedding:
+            1. Naive channel conditioning: Add params naively to input
+            2. Channel conditioning with embedding: Fourier Encoding --> MLP --> add to channels
+            3. FiLM layers inside the fno_blocks: no channel augmentation
+        """
+        # augment input channels if film_naive
         if self.film_naive:
-            return self.forward_naive(x, t_cool, time)
-        else:
-            return self.forward_film(x, t_cool, time)
-
-    def forward_naive(self, x, t_cool, time):
-        """Forward pass from original FNO class above with channel conditioning"""
-
-        if self.naive_use_embedding:
-            x = self.embed_concatenate_channels(x, t_cool, time)
-        else:
-            x = self.concatenate_channels(x, t_cool, time)
+            if self.naive_use_embedding:
+                x = self.embed_concatenate_channels(x, t_cool, time)
+            else:
+                x = self.concatenate_channels(x, t_cool, time)
 
         x = self.lifting(x)
-
         if self.domain_padding is not None:
             x = self.domain_padding.pad(x)
 
-        for layer_idx in range(self.n_layers):
-            x = self.fno_blocks(x, layer_idx)
 
-        if self.domain_padding is not None:
-            x = self.domain_padding.unpad(x)
+        # normal fno_blocks if film_naive
+        if self.film_naive:
+            for layer_idx in range(self.n_layers):
+                x = self.fno_blocks(x, layer_idx)
+        # fno_blocks wit FiLM layers otherwise
+        else:
+            gammas, betas = self.film_layers(t_cool, time)
+            for layer_idx in range(self.n_layers):
+                g, b = gammas[:, layer_idx], betas[:, layer_idx]
+                x = self.fno_blocks(x, layer_idx, gamma=g, beta=b)
 
-        x = self.projection(x)
-
-        return x
-
-    def forward_film(self, x, t_cool, time):
-        """Forward pass from original FNO class above with new SpectralBlockFiLM"""
-        x = self.lifting(x)
-
-        if self.domain_padding is not None:
-            x = self.domain_padding.pad(x)
-
-        for layer_idx in range(self.n_layers):
-            gamma, beta = self.film_layer(t_cool, time)
-            x = self.fno_blocks(x, layer_idx, gamma=gamma, beta=beta)
 
         if self.domain_padding is not None:
             x = self.domain_padding.unpad(x)
@@ -166,5 +158,6 @@ class FNOFiLM(neuralop_FNO):
         if self.film_time:
             params.append(t)
         embedded_params = self.embed_features(params)
+        # reshape to match inputs
         params = embedded_params.unsqueeze(-1).unsqueeze(-1).expand(B, len(params)*16, H, W)
         return torch.cat([inputs_tensor, params], dim=1)

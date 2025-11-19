@@ -42,10 +42,13 @@ class SigmaNormLinear(nn.Module):
 
 
 class MLP(nn.Module):
-    def __init__(self, hidden_dim, exp_factor=4.0):
+    def __init__(self, in_dim, exp_factor=4.0, out_dim=None, hidden_dim=None):
         super().__init__()
-        self.fc1 = nn.Linear(hidden_dim, int(hidden_dim * exp_factor))
-        self.fc2 = nn.Linear(int(hidden_dim * exp_factor), hidden_dim)
+        if out_dim is None: out_dim = in_dim
+        if hidden_dim is None: hidden_dim = in_dim
+
+        self.fc1 = nn.Linear(in_dim, int(hidden_dim * exp_factor))
+        self.fc2 = nn.Linear(int(hidden_dim * exp_factor), out_dim)
         self.act = nn.GELU()
 
     def forward(self, x):
@@ -86,10 +89,13 @@ class FourierEncoding(nn.Module):
 
 class EmbedFeatures(nn.Module):
     """Uses Sinusoidal Fourier encoding and MLP to embed features."""
-    def __init__(self, hidden_dim, num_bands, include_input=False):
+    def __init__(self, output_dim, num_bands, num_inputs=2, include_input=False):
         super().__init__()
         self.FourierEncoding = FourierEncoding(num_bands, include_input)
-        self.MLP = MLP(hidden_dim)
+        # calculate input dimensions
+        encoding_dim = (2 * num_bands + int(include_input)) * num_inputs
+
+        self.MLP = MLP(in_dim=encoding_dim, out_dim=output_dim, hidden_dim=output_dim)    # hidden gets multiplied by 4
 
     def forward(self, inputs: list):
         encodings = [self.FourierEncoding(x) for x in inputs]
@@ -97,25 +103,37 @@ class EmbedFeatures(nn.Module):
         # idea here to solve dim issue: use if_instantiated_MLP to get the shape of encodings as hidden dim
         return self.MLP(encodings)
 
-class FiLMLayer(nn.Module):
-    """This generates FiLM Layers. It returns gamma and beta from conditioning parameters"""
-    def __init__(self, feature_channels=16, hidden_factor=4.0):
+class FiLMLayers(nn.Module):
+    """This generates FiLM Layers. It returns gamma and beta from conditioning parameters for all layers"""
+    def __init__(self, n_layers=4, feature_channels=128, hidden_factor=4.0):
         super().__init__()
+        self.n_layers = n_layers
+        self.feature_channels = feature_channels
 
-        # embed time and t_cool and feed them to MLP
-        self.embed_features = EmbedFeatures(32, 8)
-        # MLP for generating beta and gamma
-        self.generator = MLP(feature_channels*2)
+        self.embed_features = EmbedFeatures(output_dim=64, num_bands=8, num_inputs=2)
+        # We output a tensor containing gammas and betas for n_layers
+        output_size = n_layers * feature_channels * 2
+        self.generator = MLP(in_dim=64, out_dim=output_size, hidden_dim=128)    # hidden gets multiplied by 4
+
         # Initialize gamma to 1 and beta to 0
-        nn.init.constant_(self.generator.bias[feature_channels:], 0)
-        nn.init.constant_(self.generator.bias[:feature_channels], 1)
+        # We do this by init to 0 and then adding 1 to gamma in the forward
+        with torch.no_grad():
+            self.generator.fc2.weight.fill_(0)
+            self.generator.fc2.bias.fill_(0)
 
     def forward(self, t_cool, time):
         # embed conditioning params
-        embedded_features = self.embed_features([t_cool, time])
+        emb = self.embed_features([t_cool, time])
+
         # convert to gamma beta
-        gammas_betas = self.generator(embedded_features)
-        gamma, beta = torch.chunk(gammas_betas, 2, dim=1)
-        # reshape: [B, C] --> [B, C, 1, 1]
+        out = self.generator(emb)
+
+        # Reshape: [B, n_layers, C, 2]
+        out = out.view(-1, self.n_layers, self.feature_channels, 2)
+
+        gamma = out[..., 0] + 1    # we add 1 to initialize with identity
+        beta = out[..., 1]
+
+        # reshape: [B, n_layers, C] --> [B, n_layers, C, 1, 1]
         gamma, beta = gamma.unsqueeze(-1).unsqueeze(-1), beta.unsqueeze(-1).unsqueeze(-1)
         return gamma, beta
