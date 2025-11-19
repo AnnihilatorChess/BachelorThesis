@@ -85,50 +85,36 @@ class FourierEncoding(nn.Module):
 
 
 class EmbedFeatures(nn.Module):
-    """Uses Sinusoidal Fourier encoding and MLP to embed a feature scalar."""
+    """Uses Sinusoidal Fourier encoding and MLP to embed features."""
     def __init__(self, hidden_dim, num_bands, include_input=False):
         super().__init__()
         self.FourierEncoding = FourierEncoding(num_bands, include_input)
         self.MLP = MLP(hidden_dim)
 
-    def forward(self, inputs):
+    def forward(self, inputs: list):
         encodings = [self.FourierEncoding(x) for x in inputs]
         encodings = torch.cat(encodings, dim=1)
+        # idea here to solve dim issue: use if_instantiated_MLP to get the shape of encodings as hidden dim
         return self.MLP(encodings)
 
 class FiLMLayer(nn.Module):
     """This generates FiLM Layers. It returns gamma and beta from conditioning parameters"""
-    def __init__(self, t_cool_embed_dim, time_embed_dim, feature_channels, hidden_dim):
+    def __init__(self, feature_channels=16, hidden_factor=4.0):
         super().__init__()
 
-        # embed time and t_cool via MLP
-        self.time_embedding = nn.Sequential(
-            nn.Linear(1, time_embed_dim),
-            nn.GELU(),
-            nn.Linear(time_embed_dim, time_embed_dim),
-        )
-        self.t_cool_embedding = nn.Sequential(
-            nn.Linear(1, t_cool_embed_dim),
-            nn.GELU(),
-            nn.Linear(t_cool_embed_dim, t_cool_embed_dim),
-        )
+        # embed time and t_cool and feed them to MLP
+        self.embed_features = EmbedFeatures(32, 8)
         # MLP for generating beta and gamma
-        self.generator = nn.Sequential(
-            nn.Linear(time_embed_dim + t_cool_embed_dim, hidden_dim),
-            nn.GELU(),
-            nn.Linear(hidden_dim, 2*feature_channels),
-        )
+        self.generator = MLP(feature_channels*2)
         # Initialize gamma to 1 and beta to 0
         nn.init.constant_(self.generator.bias[feature_channels:], 0)
         nn.init.constant_(self.generator.bias[:feature_channels], 1)
 
     def forward(self, t_cool, time):
         # embed conditioning params
-        embedded_time = self.time_embedding(time)
-        embedded_t_cool = self.t_cool_embedding(t_cool)
-        conditioning_input = torch.cat([embedded_time, embedded_t_cool], dim=1)
+        embedded_features = self.embed_features([t_cool, time])
         # convert to gamma beta
-        gammas_betas = self.generator(conditioning_input)
+        gammas_betas = self.generator(embedded_features)
         gamma, beta = torch.chunk(gammas_betas, 2, dim=1)
         # reshape: [B, C] --> [B, C, 1, 1]
         gamma, beta = gamma.unsqueeze(-1).unsqueeze(-1), beta.unsqueeze(-1).unsqueeze(-1)
