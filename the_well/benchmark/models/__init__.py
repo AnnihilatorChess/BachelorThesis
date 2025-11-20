@@ -9,12 +9,14 @@ from .unet_convnext import UNetConvNext
 
 # FiLM Models
 from .fno_film import FNOFiLM
+from .unet_classic_film import UNetClassicFiLM
+from .unet_convnext_film import UNetConvNextFiLM
 
 __all__ = [
     "FNO", "FNOFiLM",
     "TFNO",
-    "UNetClassic",
-    "UNetConvNext",
+    "UNetClassic", "UNetClassicFiLM",
+    "UNetConvNext", "UNetConvNextFiLM",
     "DilatedResNet",
     "ReFNO",
     "AViT",

@@ -121,19 +121,15 @@ class FNOFiLM(neuralop_FNO):
     def concatenate_channels(self, inputs_tensor, t_cool, t) -> torch.Tensor:
         """Concatenates t_cool and time with the physical input channels."""
         B, C, H, W = inputs_tensor.shape
+        params = []
 
         # converts [B, 1] -> [B, 1, H, W]
         if self.film_t_cool:
-            t_cool = t_cool.view(B, 1, 1, 1).expand(B, 1, H, W)
-        else:
-            t_cool = None
-        # converts: [B,1 -> [B, 1, H, W]
+            params.append(t_cool.view(B, 1, 1, 1).expand(B, 1, H, W))
         if self.film_time:
-            t = t.view(B, 1, 1, 1).expand(B, 1, H, W)
-        else:
-            t = None
+            params.append(t.view(B, 1, 1, 1).expand(B, 1, H, W))
+
         # concat along channel dim: -> [B, C_in + params, H, W]
-        params = [p for p in [t, t_cool] if p is not None]
         inputs_with_params = torch.cat([inputs_tensor] + params, dim=1)
         return inputs_with_params
 
@@ -144,7 +140,10 @@ class FNOFiLM(neuralop_FNO):
             params.append(t_cool)
         if self.film_time:
             params.append(t)
+
         embedded_params = self.embed_features(params)
+
         # reshape to match inputs
-        params = embedded_params.unsqueeze(-1).unsqueeze(-1).expand(B, len(params)*16, H, W)
-        return torch.cat([inputs_tensor, params], dim=1)
+        params_spatial = embedded_params.view(B, self.extra_channels, 1, 1).expand(B, self.extra_channels, H, W)
+        return torch.cat([inputs_tensor, params_spatial], dim=1)
+
