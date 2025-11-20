@@ -1,9 +1,8 @@
 import torch
-import torch.nn as nn
 from neuralop.models import FNO as neuralop_FNO
 from neuralop.layers.fno_block import FNOBlocks
 
-from the_well.benchmark.models.common import BaseModel, MLP, EmbedFeatures, FiLMLayers
+from the_well.benchmark.models.common import EmbedFeatures, FiLMLayers
 
 
 class SpectralBlockFiLM(FNOBlocks):
@@ -11,37 +10,19 @@ class SpectralBlockFiLM(FNOBlocks):
         super().__init__(*args, **kwargs)
 
     def forward(self, x, index=0, output_shape=None, gamma=None, beta=None):
-        """Forward pass from FNOBlocks of Neuraloperator Library with added FiLM Layer"""
-        if self.fno_skips is not None:
-            x_skip_fno = self.fno_skips[index](x)
-            x_skip_fno = self.convs[index].transform(x_skip_fno, output_shape=output_shape)
+        """Forward pass from FNOBlocks of Neuraloperator Library with added FiLM Layer and removed conditional parts"""
+        x_skip_fno = self.fno_skips[index](x)
+        x_skip_fno = self.convs[index].transform(x_skip_fno, output_shape=output_shape)
 
-        if self.use_channel_mlp and self.channel_mlp_skips is not None:
-            x_skip_channel_mlp = self.channel_mlp_skips[index](x)
-            x_skip_channel_mlp = self.convs[index].transform(x_skip_channel_mlp, output_shape=output_shape)
-
-
-        x_fno = self.convs[index](x, output_shape=output_shape)
-
-        if self.norm is not None:    # standard settings have norm=None
-            x_fno = self.norm[self.n_norms * index](x_fno)
-
-        # We add the FiLM layer before the non_linearity and before the skip connection
-        x_fno = (gamma * x_fno) + beta
-
-        x = x_fno + x_skip_fno if self.fno_skips is not None else x_fno
-
-        if index < (self.n_layers - 1):
-            x = self.non_linearity(x)
-
-        if self.use_channel_mlp:
-            if self.channel_mlp_skips is not None:
-                x = self.channel_mlp[index](x) + x_skip_channel_mlp
-            else:
-                x = self.channel_mlp[index](x)
+        x_fno = self.convs(x, index, output_shape=output_shape)
 
         if self.norm is not None:
-            x = self.norm[self.n_norms * index + 1](x)
+            x_fno = self.norm[self.n_norms * index](x_fno)
+
+        # Here we add the Scaling and shifting of FiLM in the Fourier Path of the FNO
+        x_fno = (gamma * x_fno) + beta
+
+        x = x_fno + x_skip_fno
 
         if index < (self.n_layers - 1):
             x = self.non_linearity(x)
@@ -80,9 +61,15 @@ class FNOFiLM(neuralop_FNO):
         self.film_naive = film_naive
         self.film_time = film_time
         self.film_t_cool = film_t_cool
-        output_size = extra_channels if film_naive else 32
-        self.embed_features = EmbedFeatures(output_size, 8, num_inputs=int(film_time + film_t_cool))
 
+        # embedding method
+        if film_naive and film_naive_use_embedding:
+            self.embed_features = EmbedFeatures(
+                extra_channels,
+                8,
+                num_inputs=int(film_time + film_t_cool)
+            )
+        # override fno_blocks with FiLM-Spectral block for real FiLM
         if not self.film_naive:
             self.fno_blocks = SpectralBlockFiLM(
                 in_channels = hidden_channels,
@@ -146,7 +133,7 @@ class FNOFiLM(neuralop_FNO):
         else:
             t = None
         # concat along channel dim: -> [B, C_in + params, H, W]
-        params = [p for p in [t, t_cool] if p]
+        params = [p for p in [t, t_cool] if p is not None]
         inputs_with_params = torch.cat([inputs_tensor] + params, dim=1)
         return inputs_with_params
 

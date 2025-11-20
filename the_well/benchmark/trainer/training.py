@@ -415,26 +415,30 @@ class Trainer:
     ##########################################################################
     def norm_time(self, t):
         """Time in turbulent_radiative_layer_2D is in [0, 159.7033]"""
-        return t / 159.7033
+        return t / torch.tensor(159.7033, device=self.device)
 
     def norm_t_cool(self, t_cool, log_scale=True):
         """t_cool is in [0.03, 3.16]"""
+        min_val = torch.tensor(0.03, device=self.device)
+        max_val = torch.tensor(3.16, device=self.device)
+
         if log_scale:
-            denom =  torch.log(torch.tensor([3.16])) - torch.log(torch.tensor([0.03]))
-            t_cool = (torch.log(torch.tensor([t_cool])) - torch.log(torch.tensor([0.03]))) / torch.tensor([denom])
+            denom = torch.log(max_val) - torch.log(min_val)
+            t_cool = (torch.log(t_cool) - torch.log(min_val)) / denom
         else:
-            denom = 3.16 - 0.03
-            t_cool = (t_cool - 0.03) / denom
+            denom = max_val - min_val
+            t_cool = (t_cool - min_val) / denom
+
         return t_cool
 
     def get_pushforward_probs(self, epoch: int) -> list:
         """Linearly interpolate between starting_probs and final_probs with warmup"""
         warmup_epochs = self.pushforward_warmup_epochs
+        starting_probs = [1, 0, 0 , 0]
         if epoch < warmup_epochs:
             return [1, 0, 0, 0]
-        starting_probs = [0.8, 0.2, 0, 0]
 
-        progress = (epoch - warmup_epochs) / (self.max_epoch * 0.9 - warmup_epochs)
+        progress = (epoch - warmup_epochs) / (self.max_epoch - warmup_epochs)
         progress = min(progress, 1)
 
         # linear interpolation, dont need to normalize
