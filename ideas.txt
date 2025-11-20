@@ -23,7 +23,9 @@ Configs changed:
 
     added boolean pushforward and accompanying params to trainer/defaults.yml
     added n_steps_output_train: int --> this is for the pushforward trick, so that val is still with 1 step prediction
-    added boolean film_naive
+    added boolean film
+    other film params are in the model configs
+    added experiment and model config files for the FiLM models
 
 Code changed:
     training.py:
@@ -34,9 +36,9 @@ Code changed:
         added train_one_epoch_pushforward:
             method to train one epoch using the pushforward trick, probabilistic assignment of pushforward steps
             helper functions: get_pushforward_probs, predict_next_step
-        added FiLM naive:
-            added concatenate_params helper function for FiLM naive
-            updated rollout_model, predict_next_step, train_one_epoch_pushforward for FiLM naive
+        added FiLM:
+            updated rollout_model, predict_next_step, train_one_epoch_pushforward for FiLM
+            helper function norm_t, norm_t_cool
 
 
 
@@ -53,7 +55,13 @@ Code changed:
     models/tfno.py
         actually using the fno blocks
 
-
+    New architectures:
+    models/fno_film/__init__.py:
+        FNO with FiLM modification.
+    models/unet_classic_film/__init__.py:
+        unet with FiLM modification.
+     models/unet_convnext_film/__init__.py:
+         unet_convnext with FiLM modification.
 
 
 
