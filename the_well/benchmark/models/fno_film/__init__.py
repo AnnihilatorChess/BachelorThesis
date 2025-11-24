@@ -20,9 +20,10 @@ class SpectralBlockFiLM(FNOBlocks):
             x_fno = self.norm[self.n_norms * index](x_fno)
 
         # Here we add the Scaling and shifting of FiLM in the Fourier Path of the FNO
-        x_fno = (gamma * x_fno) + beta
+        # x_fno = (gamma * x_fno) + beta
 
         x = x_fno + x_skip_fno
+        x = (gamma * x) + beta
 
         if index < (self.n_layers - 1):
             x = self.non_linearity(x)
@@ -46,10 +47,11 @@ class FNOFiLM(neuralop_FNO):
         film_t_cool: bool = True,
     ):
         # augment input channels of model for naive FiLM
+        self.num_inputs = int(film_time + film_t_cool)
         if film_naive:
             scaler = 16 if film_naive_use_embedding else 1
-            extra_channels = (film_time + film_t_cool) * scaler
-            dim_in = dim_in + extra_channels
+            self.extra_channels = self.num_inputs * scaler
+            dim_in = dim_in + self.extra_channels
 
         super().__init__(
             n_modes=(modes1, modes2),
@@ -59,13 +61,13 @@ class FNOFiLM(neuralop_FNO):
         )
         self.naive_use_embedding = film_naive_use_embedding
         self.film_naive = film_naive
-        self.film_time = film_time
-        self.film_t_cool = film_t_cool
+        self.time = film_time
+        self.t_cool = film_t_cool
 
         # embedding method
         if film_naive and film_naive_use_embedding:
             self.embed_features = EmbedFeatures(
-                extra_channels,
+                self.extra_channels,
                 8,
                 num_inputs=int(film_time + film_t_cool)
             )
@@ -77,7 +79,11 @@ class FNOFiLM(neuralop_FNO):
                 n_modes = (modes1, modes2),
                 n_layers = 4,
             )
-            self.film_layers = FiLMLayers(n_layers=4, feature_channels=hidden_channels)
+            self.film_layers = FiLMLayers(
+                n_layers=4,
+                feature_channels=hidden_channels,
+                num_inputs=self.num_inputs
+            )
 
     def forward(self, x, t_cool, time):
         """
@@ -105,6 +111,7 @@ class FNOFiLM(neuralop_FNO):
                 x = self.fno_blocks(x, layer_idx)
         # fno_blocks wit FiLM layers otherwise
         else:
+            t_cool, time = t_cool if self.t_cool else None, time if self.time else None
             gammas, betas = self.film_layers(t_cool, time)
             for layer_idx in range(self.n_layers):
                 g, b = gammas[:, layer_idx], betas[:, layer_idx]
@@ -124,9 +131,9 @@ class FNOFiLM(neuralop_FNO):
         params = []
 
         # converts [B, 1] -> [B, 1, H, W]
-        if self.film_t_cool:
+        if self.t_cool:
             params.append(t_cool.view(B, 1, 1, 1).expand(B, 1, H, W))
-        if self.film_time:
+        if self.time:
             params.append(t.view(B, 1, 1, 1).expand(B, 1, H, W))
 
         # concat along channel dim: -> [B, C_in + params, H, W]
@@ -136,9 +143,9 @@ class FNOFiLM(neuralop_FNO):
     def embed_concatenate_channels(self, inputs_tensor, t_cool, t) -> torch.Tensor:
         B, C, H, W = inputs_tensor.shape
         params = []
-        if self.film_t_cool:
+        if self.t_cool:
             params.append(t_cool)
-        if self.film_time:
+        if self.time:
             params.append(t)
 
         embedded_params = self.embed_features(params)

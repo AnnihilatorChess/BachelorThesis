@@ -3,7 +3,7 @@ init_features: 48
 ##############
 # FiLM configs
 ##############
-film_naive: True                 # naive FiLM: augment model inputs with time and/or cooling information
+film_naive: False                 # naive FiLM: augment model inputs with time and/or cooling information
 film_naive_use_embedding: True      # use sinusoidal embeddings for time/cooling inputs in naive FiLM
-film_time: True                   # either film_time or film_t_cool has to be True, or both
+film_time: False                   # either film_time or film_t_cool has to be True, or both
 film_t_cool: True
