@@ -65,9 +65,9 @@ class SN_MLP(nn.Module):
     def forward(self, x):
         return self.fc2(self.act(self.fc1(x)))
 
-###################
+#######################################
 # here are some helper classes for FiLM
-###################
+#######################################
 
 class FourierEncoding(nn.Module):
     """Fourier encoding: NeRF style, cite Mildenhall et al. (2020)."""
@@ -102,22 +102,21 @@ class EmbedFeatures(nn.Module):
             self.MLP.fc2.bias.fill_(0.0)
 
     def forward(self, inputs: list):
-        encodings = [self.FourierEncoding(x) for x in inputs]
+        encodings = [self.FourierEncoding(x) for x in inputs if x is not None]
         encodings = torch.cat(encodings, dim=1)
         # idea here to solve dim issue: use if_instantiated_MLP to get the shape of encodings as hidden dim
         return self.MLP(encodings)
 
 class FiLMLayers(nn.Module):
     """This generates FiLM Layers. It returns gamma and beta from conditioning parameters for all layers"""
-    def __init__(self, n_layers=4, feature_channels=128, hidden_factor=4.0):
+    def __init__(self, n_layers=4, feature_channels=128, hidden_factor=4.0, num_inputs=2):
         super().__init__()
         self.n_layers = n_layers
         self.feature_channels = feature_channels
-
-        self.embed_features = EmbedFeatures(output_dim=64, num_bands=8, num_inputs=2)
+        self.embed_features = EmbedFeatures(output_dim=128, num_bands=8, num_inputs=num_inputs)
         # We output a tensor containing gammas and betas for n_layers
         output_size = n_layers * feature_channels * 2
-        self.generator = MLP(in_dim=64, out_dim=output_size, hidden_dim=128)    # hidden gets multiplied by 4
+        self.generator = MLP(in_dim=128, out_dim=output_size, hidden_dim=128)    # hidden gets multiplied by 4
 
         # Initialize gamma to 1 and beta to 0
         # We do this by init to 0 and then adding 1 to gamma in the forward
