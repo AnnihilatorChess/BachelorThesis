@@ -5,7 +5,11 @@ Adapted from:
     Source: https://github.com/pdebench/PDEBench/blob/main/pdebench/models/unet/unet.py
 
 If you use this implementation, please cite original work above.
+
+This version is adapted once more to integrate input conditioning and FiLM.
+The code is based on the unet_classic implementation in unet_classic/__init__.py
 """
+
 
 from collections import OrderedDict
 
@@ -43,16 +47,22 @@ class UNetBlockFiLM(nn.Module):
 
         # FiLM Layers class from common.py
         if not film_naive:
-            self.film_layer = FiLMLayers(n_layers=1, feature_channels=features, num_inputs=num_inputs)
+            self.film_layers = FiLMLayers(n_layers=2, feature_channels=features, num_inputs=num_inputs)
 
     def forward(self, x, t_cool=None, time=None):
-        out = self.act1(self.norm1(self.conv1(x)))
+        out = self.norm1(self.conv1(x))
+
+        if not self.film_naive:  # not film_naive --> real FiLM
+            gamma, beta = self.film_layer(t_cool, time) # returns [B, 2, C, 1, 1] because of n_layers
+            gamma1, beta1 = gamma[:, 0], beta[:, 0]  # convert to [B, C, 1, 1]
+            gamma2, beta2 = gamma[:, 1], beta[:, 1]
+            out = (gamma1 * out) + beta1
+
+        out = self.act1(out)
         out = self.norm2(self.conv2(out))
 
-        if not self.film_naive:    # not film_naive --> real FiLM
-            gamma, beta = self.film_layer(t_cool, time) # returns [B, 1, C, 1, 1] because of n_layers
-            gamma, beta = gamma[:, 0], beta[:, 0]            # convert to [B, C, 1, 1]
-            out = (gamma * out) + beta
+        if not self.film_naive:
+            out = (gamma2 * out) + beta2
 
         return self.act2(out)
 

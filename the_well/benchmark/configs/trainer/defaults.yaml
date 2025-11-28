@@ -17,4 +17,5 @@ checkpoint_path: "" # This is a default that is overridden by the code
 pushforward: False
 pushforward_final_probs: [0.5, 0.2, 0.1, 0.1]
 pushforward_warmup_epochs: 30
+# FiLM configs
 film: True # other FiLM params are in the model config

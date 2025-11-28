@@ -7,6 +7,9 @@ Mixed adaptation from:
     Ronneberger et al., 2015. Convolutional Networks for Biomedical Image Segmentation.
 
 If you use this implementation, please cite original work above.
+
+This version is adapted once more to integrate input conditioning and FiLM.
+The code is based on the unet_convnext implementation in unet_convnext/__init__.py
 """
 
 import torch
@@ -14,9 +17,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 from timm.models.layers import DropPath
-from torch.utils.checkpoint import checkpoint
 
-from the_well.benchmark.models.common import BaseModel
+from the_well.benchmark.models.common import BaseModel, EmbedFeatures, FiLMLayers
 
 conv_modules = {1: nn.Conv1d, 2: nn.Conv2d, 3: nn.Conv3d}
 conv_transpose_modules = {
@@ -113,8 +115,17 @@ class Block(nn.Module):
         layer_scale_init_value (float): Init value for Layer Scale. Default: 1e-6.
     """
 
-    def __init__(self, dim, n_spatial_dims, drop_path=0.0, layer_scale_init_value=1e-6):
+    def __init__(
+            self,
+            dim,
+            n_spatial_dims,
+            drop_path=0.0,
+            layer_scale_init_value=1e-6,
+            film_naive=False,
+            num_inputs=2
+    ):
         super().__init__()
+        self.film_naive = film_naive
         self.n_spatial_dims = n_spatial_dims
         self.dwconv = conv_modules[n_spatial_dims](
             dim, dim, kernel_size=7, padding=3, groups=dim
@@ -132,15 +143,26 @@ class Block(nn.Module):
         )
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
-    def forward(self, x):
+        # FiLM Layers class from common.py
+        if not film_naive:
+            self.film_layer = FiLMLayers(n_layers=1, feature_channels=dim, num_inputs=num_inputs)
+
+    def forward(self, x, t_cool=None, time=None):
         input = x
         x = self.dwconv(x)
         # (N, C, H, W) -> (N, H, W, C)
         x = rearrange(x, permute_channel_strings[self.n_spatial_dims][0])
         x = self.norm(x)
+
+        if not self.film_naive:    # not film_naive --> real FiLM
+            gamma, beta = self.film_layer(t_cool, time) # returns [B, 1, C, 1, 1] because of n_layers
+            gamma, beta = gamma[:, 0], beta[:, 0]            # convert to [B, C, 1, 1]
+            x = (gamma * x) + beta
+
         x = self.pwconv1(x)
         x = self.act(x)
         x = self.pwconv2(x)
+
         if self.gamma is not None:
             x = self.gamma * x
         # (N, H, W, C) -> (N, C, H, W)
@@ -171,9 +193,11 @@ class Stage(nn.Module):
         layer_scale_init_value=1e-6,
         mode="down",
         skip_project=False,
+        film_naive=False,
+        num_inputs=2
     ):
         super().__init__()
-
+        self.film_naive = film_naive
         if skip_project:
             self.skip_proj = conv_modules[n_spatial_dims](2 * dim_in, dim_in, 1)
         else:
@@ -187,15 +211,20 @@ class Stage(nn.Module):
 
         self.blocks = nn.ModuleList(
             [
-                Block(dim_in, n_spatial_dims, drop_path, layer_scale_init_value)
+                Block(dim_in, n_spatial_dims, drop_path, layer_scale_init_value, film_naive, num_inputs)
                 for _ in range(depth)
             ]
         )
 
-    def forward(self, x):
+    def forward(self, x, t_cool=None, time=None):
         x = self.skip_proj(x)
         for block in self.blocks:
-            x = block(x)
+
+            if self.film_naive:
+                x = block(x)
+            else:
+                x = block(x, t_cool, time)
+
         x = self.resample(x)
         return x
 
@@ -211,12 +240,27 @@ class UNetConvNextFiLM(BaseModel):
         blocks_per_stage: int = 1,
         blocks_at_neck: int = 1,
         init_features: int = 32,
-        gradient_checkpointing: bool = False,
+        film_naive: bool = False,
+        film_naive_use_embedding: bool = True,
+        film_t_cool: bool = False,
+        film_time: bool = False,
     ):
         super().__init__(n_spatial_dims, spatial_resolution)
+
+        # augment input channels of model for naive FiLM
+        self.num_inputs = int(film_time + film_t_cool)
+        if film_naive:
+            scaler = 16 if film_naive_use_embedding else 1
+            self.extra_channels = self.num_inputs * scaler
+            dim_in = dim_in + self.extra_channels
+
+        self.naive_use_embedding = film_naive_use_embedding
+        self.film_naive = film_naive
+        self.time = film_time
+        self.t_cool = film_t_cool
+
         self.n_spatial_dims = n_spatial_dims
         features = init_features
-        self.gradient_checkpointing = gradient_checkpointing
         encoder_dims = [features * 2**i for i in range(stages + 1)]
         decoder_dims = [features * 2**i for i in range(stages, -1, -1)]
         encoder = []
@@ -235,6 +279,8 @@ class UNetConvNextFiLM(BaseModel):
                     n_spatial_dims,
                     blocks_per_stage,
                     mode="down",
+                    film_naive=film_naive,
+                    num_inputs=self.num_inputs
                 )
             )
             decoder.append(
@@ -245,6 +291,8 @@ class UNetConvNextFiLM(BaseModel):
                     blocks_per_stage,
                     mode="up",
                     skip_project=i != 0,
+                    film_naive=film_naive,
+                    num_inputs=self.num_inputs
                 )
             )
         self.encoder = nn.ModuleList(encoder)
@@ -254,25 +302,82 @@ class UNetConvNextFiLM(BaseModel):
             n_spatial_dims,
             blocks_at_neck,
             mode="neck",
+            film_naive=film_naive,
+            num_inputs=self.num_inputs
         )
         self.decoder = nn.ModuleList(decoder)
 
-    def optional_checkpointing(self, layer, *inputs, **kwargs):
-        if self.gradient_checkpointing:
-            return checkpoint(layer, *inputs, use_reentrant=False, **kwargs)
-        else:
-            return layer(*inputs, **kwargs)
+        # embedding method
+        if film_naive and film_naive_use_embedding:
+            self.embed_features = EmbedFeatures(
+                self.extra_channels,
+                8,
+                num_inputs=int(film_time + film_t_cool)
+            )
 
-    def forward(self, x):
+
+    def forward(self, x, t_cool=None, time=None):
+        """Forward pass of UNetConvNext: adjusted for input conditioning and FiLM"""
+        t_cool, time = t_cool if self.t_cool else None, time if self.time else None
+        if self.film_naive:
+            if self.naive_use_embedding:
+                x = self.embed_concatenate_channels(x, t_cool, time)
+            else:
+                x = self.concatenate_channels(x, t_cool, time)
+
         x = self.in_proj(x)
         skips = []
         for i, enc in enumerate(self.encoder):
             skips.append(x)
-            x = self.optional_checkpointing(enc, x)
-        x = self.neck(x)
+            # conditional: apply FiLM layer
+            if self.film_naive:
+                x = enc(x)
+            else:
+                x = enc(x, t_cool, time)
+
+        if self.film_naive:
+            x = self.neck(x)
+        else:
+            x = self.neck(x, t_cool, time)
+
         for j, dec in enumerate(self.decoder):
             if j > 0:
                 x = torch.cat([x, skips[-j]], dim=1)
-            x = dec(x)
+            # conditional: apply FiLM Layer
+            if self.film_naive:
+                x = dec(x)
+            else:
+                x = dec(x, t_cool, time)
+
         x = self.out_proj(x)
         return x
+
+
+    def concatenate_channels(self, inputs_tensor, t_cool, t) -> torch.Tensor:
+        """Concatenates t_cool and time with the physical input channels."""
+        B, C, H, W = inputs_tensor.shape
+        params = []
+
+        # converts [B, 1] -> [B, 1, H, W]
+        if self.t_cool:
+            params.append(t_cool.view(B, 1, 1, 1).expand(B, 1, H, W))
+        if self.time:
+            params.append(t.view(B, 1, 1, 1).expand(B, 1, H, W))
+
+        # concat along channel dim: -> [B, C_in + params, H, W]
+        inputs_with_params = torch.cat([inputs_tensor] + params, dim=1)
+        return inputs_with_params
+
+    def embed_concatenate_channels(self, inputs_tensor, t_cool, t) -> torch.Tensor:
+        B, C, H, W = inputs_tensor.shape
+        params = []
+        if self.t_cool:
+            params.append(t_cool)
+        if self.time:
+            params.append(t)
+
+        embedded_params = self.embed_features(params)
+
+        # reshape to match inputs
+        params_spatial = embedded_params.view(B, self.extra_channels, 1, 1).expand(B, self.extra_channels, H, W)
+        return torch.cat([inputs_tensor, params_spatial], dim=1)

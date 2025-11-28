@@ -1,3 +1,10 @@
+
+"""
+This architecture adapts FNO to integrate input conditioning and FiLM.
+The code is based on the FNO implementation in fno/__init__.py
+"""
+
+
 import torch
 from neuralop.models import FNO as neuralop_FNO
 from neuralop.layers.fno_block import FNOBlocks
