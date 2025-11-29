@@ -157,6 +157,10 @@ class Block(nn.Module):
         if not self.film_naive:    # not film_naive --> real FiLM
             gamma, beta = self.film_layer(t_cool, time) # returns [B, 1, C, 1, 1] because of n_layers
             gamma, beta = gamma[:, 0], beta[:, 0]            # convert to [B, C, 1, 1]
+            # move C to the last dimension to broadcast correctly
+            # permute to (B, 1, 1, C)
+            gamma = gamma.permute(0, 2, 3, 1)
+            beta = beta.permute(0, 2, 3, 1)
             x = (gamma * x) + beta
 
         x = self.pwconv1(x)
