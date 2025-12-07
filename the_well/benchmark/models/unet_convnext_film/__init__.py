@@ -254,7 +254,7 @@ class UNetConvNextFiLM(BaseModel):
         # augment input channels of model for naive FiLM
         self.num_inputs = int(film_time + film_t_cool)
         if film_naive:
-            scaler = 16 if film_naive_use_embedding else 1
+            scaler = 4 if film_naive_use_embedding else 1
             self.extra_channels = self.num_inputs * scaler
             dim_in = dim_in + self.extra_channels
 
