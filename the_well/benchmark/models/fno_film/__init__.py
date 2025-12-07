@@ -75,7 +75,7 @@ class FNOFiLM(neuralop_FNO):
         if film_naive and film_naive_use_embedding:
             self.embed_features = EmbedFeatures(
                 self.extra_channels,
-                8,
+                2,
                 num_inputs=int(film_time + film_t_cool)
             )
         # override fno_blocks with FiLM-Spectral block for real FiLM
