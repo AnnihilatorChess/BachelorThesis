@@ -66,6 +66,11 @@ Code changed:
 
 
 
+Things to try out:
+    - reduce embedding size for naive_embedding.
+    - FiLM with time and t_cool for convnext
+    - reduce warmup epochs of pushforward to 20
+
 Pushforward Trick:
     - loop over every epoch for len(trajectory), in expectation this covers every point --> maybe look into this
     - change n_steps_output_train param based on pushforward=True/False in train.py

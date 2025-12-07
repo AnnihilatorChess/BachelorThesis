@@ -132,7 +132,7 @@ class UNetClassicFiLM(BaseModel):
         if film_naive and film_naive_use_embedding:
             self.embed_features = EmbedFeatures(
                 self.extra_channels,
-                8,
+                2,
                 num_inputs=int(film_time + film_t_cool)
             )
 
