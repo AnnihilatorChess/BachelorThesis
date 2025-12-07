@@ -53,7 +53,7 @@ class UNetBlockFiLM(nn.Module):
         out = self.norm1(self.conv1(x))
 
         if not self.film_naive:  # not film_naive --> real FiLM
-            gamma, beta = self.film_layer(t_cool, time) # returns [B, 2, C, 1, 1] because of n_layers
+            gamma, beta = self.film_layers(t_cool, time) # returns [B, 2, C, 1, 1] because of n_layers
             gamma1, beta1 = gamma[:, 0], beta[:, 0]  # convert to [B, C, 1, 1]
             gamma2, beta2 = gamma[:, 1], beta[:, 1]
             out = (gamma1 * out) + beta1
@@ -84,7 +84,7 @@ class UNetClassicFiLM(BaseModel):
         # augment input channels of model for naive FiLM
         self.num_inputs = int(film_time + film_t_cool)
         if film_naive:
-            scaler = 16 if film_naive_use_embedding else 1
+            scaler = 4 if film_naive_use_embedding else 1
             self.extra_channels = self.num_inputs * scaler
             dim_in = dim_in + self.extra_channels
 
