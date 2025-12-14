@@ -18,7 +18,7 @@ import torch.nn.functional as F
 from einops import rearrange
 from timm.models.layers import DropPath
 
-from the_well.benchmark.models.common import BaseModel, EmbedFeatures, FiLMLayers
+from the_well.benchmark.models.common import BaseModel, EmbedFeatures, FiLMLayers, FiLMGenerator
 
 conv_modules = {1: nn.Conv1d, 2: nn.Conv2d, 3: nn.Conv3d}
 conv_transpose_modules = {

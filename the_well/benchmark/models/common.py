@@ -108,7 +108,10 @@ class EmbedFeatures(nn.Module):
         return self.MLP(encodings)
 
 class FiLMLayers(nn.Module):
-    """This generates FiLM Layers. It returns gamma and beta from conditioning parameters for all layers"""
+    """
+    This generates FiLM Layers. It returns gamma and beta from conditioning parameters for all layers.
+    The output size for every layer is the same.
+    """
     def __init__(self, n_layers=4, feature_channels=128, hidden_factor=4.0, num_inputs=2):
         super().__init__()
         self.n_layers = n_layers
@@ -140,3 +143,67 @@ class FiLMLayers(nn.Module):
         # reshape: [B, n_layers, C] --> [B, n_layers, C, 1, 1]
         gamma, beta = gamma.unsqueeze(-1).unsqueeze(-1), beta.unsqueeze(-1).unsqueeze(-1)
         return gamma, beta
+
+
+class FiLMGenerator(nn.Module):
+    """
+    Centralized Generator that produces all gamma/beta parameters for the entire network
+    in one forward pass. The output size for every layer is adaptable.
+    """
+
+    def __init__(self, film_info, num_inputs=2, embedding_dim=128):
+        """
+        Args:
+            film_info: list of tuples (channels, num_blocks) describing the network structure.
+                       Example: [(64, 2), (128, 2), ..., (64, 2)]
+            num_inputs: number of conditioning variables (e.g. 2 for t_cool + time)
+        """
+        super().__init__()
+        self.film_info = film_info
+        self.embed_features = EmbedFeatures(output_dim=embedding_dim, num_bands=8, num_inputs=num_inputs)
+
+        # Calculate total number of parameters needed: 2 params (gamma, beta) per channel per block
+        self.splits = []
+        total_output_size = 0
+        for channels, num_blocks in film_info:
+            # size = channels * blocks * 2 (gamma/beta)
+            section_size = channels * num_blocks * 2
+            self.splits.append(section_size)
+            total_output_size += section_size
+
+        self.head = nn.Linear(embedding_dim, total_output_size)
+
+        # Critical Initialization: Initialize to identity mapping (gamma=1, beta=0).
+        # We do this by setting weights/bias to 0 here, and adding 1 to gamma later.
+        with torch.no_grad():
+            self.head.weight.fill_(0.0)
+            self.head.bias.fill_(0.0)
+
+    def forward(self, t_cool, time):
+        # 1. Shared Embedding
+        # Shape: [B, embedding_dim]
+        emb = self.embed_features([t_cool, time])
+
+        # 2. Project to all parameters
+        # Shape: [B, total_output_size]
+        all_params = self.head(emb)
+
+        # 3. Split parameters for each stage
+        stage_params_flat = torch.split(all_params, self.splits, dim=1)
+
+        # 4. Reshape for consumption by blocks
+        structured_params = []
+        for i, flat_p in enumerate(stage_params_flat):
+            channels, num_blocks = self.film_info[i]
+
+            # Reshape to [B, num_blocks, channels, 2]
+            p = flat_p.view(-1, num_blocks, channels, 2)
+
+            # Gamma centered at 1.0, Beta centered at 0.0
+            gamma = p[..., 0] + 1.0
+            beta = p[..., 1]
+
+            # Prepare dictionary for the stage
+            structured_params.append({'gamma': gamma, 'beta': beta})
+
+        return structured_params

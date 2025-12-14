@@ -84,7 +84,7 @@ Pushforward Trick:
 FiLM (Feature wise Linear Modulation):
     - use for time and t_cool param
     - look if these are in the metadata of the loader
-    - create FiLM blocks or give t and t_cool as extra input
+    - create FiLM blocks or give t and t_cool as extra inputq
 
 Dataloader (turbulent_radiative_layer_2D) returns a batch(dict) with:
     input_fields: (B, t, H, W, C)
