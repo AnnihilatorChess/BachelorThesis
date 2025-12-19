@@ -143,25 +143,21 @@ class Block(nn.Module):
         )
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
-        # FiLM Layers class from common.py
-        if not film_naive:
-            self.film_layer = FiLMLayers(n_layers=1, feature_channels=dim, num_inputs=num_inputs)
-
-    def forward(self, x, t_cool=None, time=None):
+    def forward(self, x, gamma=None, beta=None):
         input = x
         x = self.dwconv(x)
         # (N, C, H, W) -> (N, H, W, C)
         x = rearrange(x, permute_channel_strings[self.n_spatial_dims][0])
         x = self.norm(x)
 
-        if not self.film_naive:    # not film_naive --> real FiLM
-            gamma, beta = self.film_layer(t_cool, time) # returns [B, 1, C, 1, 1] because of n_layers
-            gamma, beta = gamma[:, 0], beta[:, 0]            # convert to [B, C, 1, 1]
-            # move C to the last dimension to broadcast correctly
-            # permute to (B, 1, 1, C)
-            gamma = gamma.permute(0, 2, 3, 1)
-            beta = beta.permute(0, 2, 3, 1)
-            x = (gamma * x) + beta
+        # Apply FiLM Modulation if parameters are provided
+        if gamma is not None and beta is not None:
+            # gamma/beta shape: [B, C]. We need to broadcast to [B, 1, 1, C]
+            # Reshape to (B, *spatial_ones, C)
+            shape = [x.shape[0]] + [1] * self.n_spatial_dims + [x.shape[-1]]
+            gamma_b = gamma.view(*shape)
+            beta_b = beta.view(*shape)
+            x = (gamma_b * x) + beta_b
 
         x = self.pwconv1(x)
         x = self.act(x)
@@ -220,14 +216,21 @@ class Stage(nn.Module):
             ]
         )
 
-    def forward(self, x, t_cool=None, time=None):
+    def forward(self, x, film_params=None):
+        """
+        film_params: dict with keys 'gamma', 'beta'.
+                     Values are tensors of shape [B, depth, C]
+        """
         x = self.skip_proj(x)
-        for block in self.blocks:
 
-            if self.film_naive:
-                x = block(x)
-            else:
-                x = block(x, t_cool, time)
+        for i, block in enumerate(self.blocks):
+            # Extract specific params for this block
+            gamma, beta = None, None
+            if film_params is not None:
+                gamma = film_params['gamma'][:, i, :]  # [B, C]
+                beta = film_params['beta'][:, i, :]  # [B, C]
+
+            x = block(x, gamma=gamma, beta=beta)
 
         x = self.resample(x)
         return x
@@ -275,10 +278,15 @@ class UNetConvNextFiLM(BaseModel):
         self.out_proj = conv_modules[n_spatial_dims](
             features, dim_out, kernel_size=3, padding=1
         )
+
+        # We need to collect structural info to build the Centralized Generator
+        self.film_structure = []
         for i in range(stages):
+            dim = encoder_dims[i]
+            self.film_structure.append((dim, blocks_per_stage))
             encoder.append(
                 Stage(
-                    encoder_dims[i],
+                    dim,
                     encoder_dims[i + 1],
                     n_spatial_dims,
                     blocks_per_stage,
@@ -287,9 +295,14 @@ class UNetConvNextFiLM(BaseModel):
                     num_inputs=self.num_inputs
                 )
             )
+
+        for i in range(stages):
+            dim = decoder_dims[i]
+            # Record structure
+            self.film_structure.append((dim, blocks_per_stage))
             decoder.append(
                 Stage(
-                    decoder_dims[i],
+                    dim,
                     decoder_dims[i + 1],
                     n_spatial_dims,
                     blocks_per_stage,
@@ -300,16 +313,26 @@ class UNetConvNextFiLM(BaseModel):
                 )
             )
         self.encoder = nn.ModuleList(encoder)
+
+        # Record structure for Neck
+        neck_dim = encoder_dims[-1]
+        self.film_structure.insert(stages, (neck_dim, blocks_at_neck))  # Neck is between enc and dec
+
         self.neck = Stage(
-            encoder_dims[-1],
-            encoder_dims[-1],
+            neck_dim,
+            neck_dim,
             n_spatial_dims,
             blocks_at_neck,
             mode="neck",
             film_naive=film_naive,
             num_inputs=self.num_inputs
         )
+
         self.decoder = nn.ModuleList(decoder)
+
+        # FiLM adaptive Layers
+        if not film_naive and self.num_inputs > 0:
+            self.film_generator = FiLMGenerator(self.film_structure, num_inputs=self.num_inputs)
 
         # embedding method
         if film_naive and film_naive_use_embedding:
@@ -329,29 +352,36 @@ class UNetConvNextFiLM(BaseModel):
             else:
                 x = self.concatenate_channels(x, t_cool, time)
 
+        # 1. Generate Global FiLM Parameters if active
+        all_film_params = None
+        if not self.film_naive and hasattr(self, 'film_generator'):
+            # Returns a list of dicts: [{'gamma':..., 'beta':...}, ...]
+            all_film_params = self.film_generator(t_cool, time)
+
         x = self.in_proj(x)
         skips = []
+        param_idx = 0
+        # Encoder Pass
         for i, enc in enumerate(self.encoder):
             skips.append(x)
-            # conditional: apply FiLM layer
-            if self.film_naive:
-                x = enc(x)
-            else:
-                x = enc(x, t_cool, time)
 
-        if self.film_naive:
-            x = self.neck(x)
-        else:
-            x = self.neck(x, t_cool, time)
+            stage_params = all_film_params[param_idx] if all_film_params else None
+            x = enc(x, film_params=stage_params)
+            param_idx += 1
 
+        # Neck Pass
+        stage_params = all_film_params[param_idx] if all_film_params else None
+        x = self.neck(x, film_params=stage_params)
+        param_idx += 1
+
+        # Decoder Pass
         for j, dec in enumerate(self.decoder):
             if j > 0:
                 x = torch.cat([x, skips[-j]], dim=1)
-            # conditional: apply FiLM Layer
-            if self.film_naive:
-                x = dec(x)
-            else:
-                x = dec(x, t_cool, time)
+
+            stage_params = all_film_params[param_idx] if all_film_params else None
+            x = dec(x, film_params=stage_params)
+            param_idx += 1
 
         x = self.out_proj(x)
         return x
