@@ -1,5 +1,5 @@
 _target_: the_well.benchmark.trainer.Trainer
-epochs: 100
+epochs: 200
 val_frequency: 1
 rollout_val_frequency: 2
 short_validation_length: 20
@@ -14,8 +14,8 @@ checkpoint_path: "" # This is a default that is overridden by the code
 # added configs
 ###############
 # pushforward configs
-pushforward: True
+pushforward: False
 pushforward_final_probs: [0.4, 0.2, 0.2, 0.2]
 pushforward_warmup_epochs: 20
 # FiLM configs
-film: False # other FiLM params are in the model config
+film: True # other FiLM params are in the model config
