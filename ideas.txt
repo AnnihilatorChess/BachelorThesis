@@ -10,21 +10,13 @@ python train.py experiment=fno server=local data=turbulent_radiative_layer_2D
 Default batch_size for dataset: 64
 
 Configs changed:
-    epochs: 200 --> 20 --> 50 --> 100
-    checkpoint_frequency: 20 --> 0
-    batch_size: 64 --> 8 --> 16 --> 8
-    lr: 1E-2 --> 1E-3 --> 5E-3 --> search
-    weight_decay --> 1E-4 --> 5E-4 --> 1E-4 --> 1E-2
 
-    # enable_amp: False --> True --> does not work with FNO
-    fno_modes1: 16 --> 12, doesnt work with current code
-    fno_modes2: 16 --> 12, doesnt work with current code
-    fno_hidden_channels: 128 --> 64, doesnt work with current code
+    batch_size: 64 --> 8
 
     added boolean pushforward and accompanying params to trainer/defaults.yml
     added n_steps_output_train: int --> this is for the pushforward trick, so that val is still with 1 step prediction
     added boolean film
-    other film params are in the model configs
+    other film params are in the model configs for the film models
     added experiment and model config files for the FiLM models
 
 Code changed:
@@ -39,9 +31,6 @@ Code changed:
         added FiLM:
             updated rollout_model, predict_next_step, train_one_epoch_pushforward for FiLM
             helper function norm_t, norm_t_cool
-
-
-
     train.py:
         matplotlib.use('agg') fix for thread not in main loop error
         added if statement to set n_steps_out_train=4 if pushforward=True
@@ -54,6 +43,8 @@ Code changed:
         actually using the fno blocks
     models/tfno.py
         actually using the fno blocks
+    models/common.py
+        here are the encoding, embedding and FNO_layer functions used in the FiLM models
 
     New architectures:
     models/fno_film/__init__.py:
@@ -63,17 +54,8 @@ Code changed:
      models/unet_convnext_film/__init__.py:
          unet_convnext with FiLM modification.
 
-test
-
-
-Things to try out:
-    - reduce embedding size for naive_embedding.
-    - FiLM with time and t_cool for convnext
-    - reduce warmup epochs of pushforward to 20
-    - rerun unet_classic film? why did it not throw an error
 
 Pushforward Trick:
-    - loop over every epoch for len(trajectory), in expectation this covers every point --> maybe look into this
     - change n_steps_output_train param based on pushforward=True/False in train.py
     - linearly interpolate pushforward_steps probs with warmup epochs
     - only enter train_one_epoch_pushforward during training
@@ -83,8 +65,7 @@ Pushforward Trick:
 
 FiLM (Feature wise Linear Modulation):
     - use for time and t_cool param
-    - look if these are in the metadata of the loader
-    - create FiLM blocks or give t and t_cool as extra inputq
+    - create FiLM blocks or give t and t_cool as extra input
 
 Dataloader (turbulent_radiative_layer_2D) returns a batch(dict) with:
     input_fields: (B, t, H, W, C)
@@ -96,18 +77,4 @@ Dataloader (turbulent_radiative_layer_2D) returns a batch(dict) with:
     output_time_grid: (B, t), float same per batch
 
 Questions:
-    - preserve Config like structure
-    - pushforward last training: last few steps in rollout cause massive loss because of the n_output steps
-    - implementing the temporal bundling training will not be comparable to the baseline
-    - weird behavior of the rollout val performance at start. Is there a logic error in the implementation
-    - DID NOT USE FNO LAYERS WHAT WHAT WHAT, also probably in the paper????? strange --> one step pretty bad, but doesnt diverge
-    - wasted tuning the pushforward on the FNO/ linear transform
-    - tune hyperparams or keep to stay similar with the_well paper. Ex. weight decay, domain padding for FNO
-
-Vision Transformers:
-    - MAE or some other Encoder, Decoder
-    - hybrid with some unet integration
-    - ViVit
-    - Standard ViT where the classification head is replaced by a decoder
-    - Spectral Vision Transformer --> replace axial attention with spectral attention
-    - aViT already implemented
+    -
