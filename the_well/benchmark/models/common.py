@@ -95,11 +95,7 @@ class EmbedFeatures(nn.Module):
         # calculate input dimensions
         encoding_dim = (2 * num_bands + int(include_input)) * num_inputs
 
-        self.MLP = MLP(in_dim=encoding_dim, out_dim=output_dim, hidden_dim=output_dim)    # hidden gets multiplied by 4
-        # init to 0
-        with torch.no_grad():
-            self.MLP.fc2.weight.fill_(0.0)
-            self.MLP.fc2.bias.fill_(0.0)
+        self.MLP = MLP(in_dim=encoding_dim, out_dim=output_dim, hidden_dim=64)    # hidden gets multiplied by 4
 
     def forward(self, inputs: list):
         encodings = [self.FourierEncoding(x) for x in inputs if x is not None]

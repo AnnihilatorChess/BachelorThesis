@@ -410,9 +410,6 @@ class Trainer:
         loss_dict["param_norm"] = param_norm(self.model.parameters())
         return validation_loss, loss_dict
 
-    ##########################################################################
-    # added functions, here are new functions I added for Pushforward and FiLM
-    ##########################################################################
     def norm_time(self, t):
         """Time in turbulent_radiative_layer_2D is in [0, 159.7033]"""
         return t / torch.tensor(159.7033, device=self.device)
@@ -530,10 +527,6 @@ class Trainer:
             self.lr_scheduler.step()
             train_logs["lr"] = self.lr_scheduler.get_last_lr()[-1]
         return train_logs["train_loss"], train_logs
-
-    #####################
-    # end added functions
-    #####################
 
     def train_one_epoch(self, epoch: int, dataloader: DataLoader) -> float:
         """Train the model for one epoch by looping over the dataloader."""

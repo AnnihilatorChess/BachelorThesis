@@ -27,10 +27,9 @@ class SpectralBlockFiLM(FNOBlocks):
             x_fno = self.norm[self.n_norms * index](x_fno)
 
         # Here we add the Scaling and shifting of FiLM in the Fourier Path of the FNO
-        # x_fno = (gamma * x_fno) + beta
+        x_fno = (gamma * x_fno) + beta
 
         x = x_fno + x_skip_fno
-        x = (gamma * x) + beta
 
         if index < (self.n_layers - 1):
             x = self.non_linearity(x)
