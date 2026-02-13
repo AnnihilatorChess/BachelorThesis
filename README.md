@@ -1,4 +1,4 @@
-# Neural Surrogate Modeling for Turbulent Radiative Layers
+# Enhancing Stability and Conditioning in Neural Surrogates for Turbulent Radiative Layers
 
 This repository contains the code for a university practical work on Neural Surrogate Modeling for Turbulent Radiative Layers at JKU. It is built upon [The Well](https://polymathic-ai.org/the_well/), a collection of datasets for physical simulations including a framework for benchmarking neural PDE solvers. This project extends this work with modifications designed for improving stability on the `turbulent_radiative_layer_2D` dataset.
 
