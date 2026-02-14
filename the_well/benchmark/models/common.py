@@ -95,7 +95,7 @@ class EmbedFeatures(nn.Module):
         # calculate input dimensions
         encoding_dim = (2 * num_bands + int(include_input)) * num_inputs
 
-        self.MLP = MLP(in_dim=encoding_dim, out_dim=output_dim, hidden_dim=64)    # hidden gets multiplied by 4
+        self.MLP = MLP(in_dim=encoding_dim, out_dim=output_dim, hidden_dim=128)    # hidden gets multiplied by 4
 
     def forward(self, inputs: list):
         encodings = [self.FourierEncoding(x) for x in inputs if x is not None]

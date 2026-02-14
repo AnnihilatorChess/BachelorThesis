@@ -175,8 +175,20 @@ class Trainer:
         """Load the model checkpoint."""
         logger.info(f"Loading checkpoint from {checkpoint_path}")
         checkpoint = torch.load(checkpoint_path, weights_only=False)
+        state_dict = checkpoint["model_state_dict"]
+
+        # Remove 'model.' or 'module.' prefix if it exists
+        new_state_dict = {}
+        for k, v in state_dict.items():
+            # This handles the 'model.' prefix seen in your error
+            name = k[6:] if k.startswith('model.') else k
+            # Also handle 'module.' just in case
+            name = name[7:] if name.startswith('module.') else name
+            new_state_dict[name] = v
+
         if self.model is not None:
-            self.model.load_state_dict(checkpoint["model_state_dict"])
+            # Use the cleaned state_dict
+            self.model.load_state_dict(new_state_dict)
         if self.optimizer is not None:
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dit"])
         if self.lr_scheduler is not None and "scheduler_state_dict" in checkpoint and checkpoint["scheduler_state_dict"] is not None:
