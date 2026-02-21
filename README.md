@@ -96,9 +96,26 @@ Key changes made to the original `the_well` codebase to support this research:
 
 ### Bug fixes
 
-- Evaluate test performance with best val model instead of most recent one
-- Save `lr_scheduler.state` to avoid unexpected behavior of the learning rate after continuing a training run
-- Fixed FNO and TFNO implementation to use the Spectral blocks
+- **Parameter counting mistake**  
+  Caused the FNO to have fewer parameters than intended. This was discovered by another contributor in  
+  https://github.com/PolymathicAI/the_well/issues/67
+
+- **Incorrect logging of long-term metrics**  
+  The metrics used for plotting Figures 1–4 were overwritten every batch instead of being averaged over the full epoch. We reported this in  
+  https://github.com/PolymathicAI/the_well/issues/78
+
+- **Incorrect implementation of FNO and TFNO**  
+  The spectral blocks in both model implementations were not used. We opened the following pull request, which was merged the same day:  
+  https://github.com/PolymathicAI/the_well/pull/64  
+  In this PR, we also noted that the test set was evaluated using the most recent model weights instead of the best validation checkpoint.
+
+- **Learning rate scheduler state not saved**  
+  The scheduler state was not stored, leading to inconsistent learning rate behavior when resuming training. Addressed in:  
+  https://github.com/PolymathicAI/the_well/pull/63
+
+- **Best model weights overwritten**  
+  The best validation checkpoint was overwritten at each validation step. Identified alongside:  
+  https://github.com/PolymathicAI/the_well/pull/60
 
 ### Configuration (`configs/`)
 
