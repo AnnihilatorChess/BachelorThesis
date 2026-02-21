@@ -2,7 +2,7 @@ import numpy as np
 import json
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.ticker import MaxNLocator
+from matplotlib.ticker import MaxNLocator, NullLocator, FixedLocator
 import seaborn as sns
 import os
 
@@ -11,9 +11,9 @@ import os
 plt.rcParams.update({
     "font.family": "serif",
     "font.serif": ["Times New Roman"],  # Standard NeurIPS body font
-    "font.size": 11,                    # NeurIPS standard is roughly 10-11pt
-    "axes.labelsize": 11,
-    "axes.titlesize": 12,
+    "font.size": 12,                    # NeurIPS standard is roughly 10-11pt
+    "axes.labelsize": 12,
+    "axes.titlesize": 16,
     "legend.fontsize": 10,
     "xtick.labelsize": 10,
     "ytick.labelsize": 10,
@@ -40,45 +40,82 @@ best_unet_classic_full_rollout = np.load(r"turbulent_radiative_layer_2D-unet_cla
 
 # cond_t_cool_push_fno_full_rollout = np.load(r"turbulent_radiative_layer_2D-fno-FNO-0.001\10\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_1100\full_RMSE_rollout.npy")
 
-if True:
+if False:
     print(f"FNO mean: {best_fno_full_rollout.mean()}")
     print(f"ConvNeXt mean: {best_unet_convnext_full_rollout.mean()}")
     print(f"Unet Classic mean: {best_unet_classic_full_rollout.mean()}")
 
-def plot_rollout_losses(losses, title="Rollout Loss", xlabel="Rollout step", ylabel="Loss"):
+
+def plot_rollout_losses_comparison(model_losses_map, title="Rollout Loss Comparison"):
     """
-    Plot rollout losses over time.
+    Plots multiple rollout loss curves in a single chart for comparison.
 
-    Parameters
-    ----------
-    losses : array-like
-        1D array of rollout losses (e.g. shape (97,))
-    title : str
-        Plot title
-    xlabel : str
-        Label for x-axis
-    ylabel : str
-        Label for y-axis
+    Args:
+        model_losses_map (dict): Dictionary where keys are model names and
+                                 values are 1D numpy arrays of losses.
+        title (str): The main title of the plot.
     """
-    losses = np.asarray(losses)
 
-    if losses.ndim != 1:
-        raise ValueError("losses must be a 1D array")
+    # 2. Setup Plot
+    plt.figure(figsize=(6, 4), dpi=200)
 
-    steps = np.arange(len(losses))
+    # 3. Define Color Mapping (consistent with previous plots)
+    def get_model_color_linestyle(model_name):
+        name_lower = model_name.lower()
+        if 'fno' in name_lower:
+            return 'tab:blue', 'solid'
+        elif 'classic' in name_lower:
+            return 'tab:orange', 'dashed'
+        elif 'convnext' in name_lower:
+            return 'tab:green', 'dashdot'
+        return '#000000', 'solid'
 
-    plt.figure()
-    plt.plot(steps, losses)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.title(title)
-    plt.grid(True)
+    # 4. Plot each model's curve
+    for model_name, losses in model_losses_map.items():
+        losses = np.asarray(losses)
+        steps = np.arange(len(losses))
+        color, linestyle = get_model_color_linestyle(model_name)
+
+        plt.plot(
+            steps,
+            losses,
+            label=model_name,
+            color=color,
+            linestyle=linestyle,
+            linewidth=2,
+            alpha=0.8
+        )
+
+    # 5. Formatting
+    plt.xlabel("Time Step")
+    plt.ylabel("VRMSE")
+    plt.title(title, fontsize=16)
+
+    # Grid and Ticks
+    plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True, nbins=10))
+
+    # Legend Row under Title (or top left inside)
+    #plt.legend(loc='upper left', frameon=True, fontsize=10)
+
     plt.tight_layout()
     plt.show()
 
+
 if False:
-    plot_rollout_losses(best_fno_full_rollout)
-    plot_rollout_losses(best_unet_convnext_full_rollout)
+    comparison_data = {
+        "Baseline FNO": baseline_fno_full_rollout,
+        "Baseline U-Net Classic": baseline_unet_classic_full_rollout,
+        "Baseline U-Net ConvNeXt": baseline_conv_next_full_rollout
+    }
+
+    plot_rollout_losses_comparison(comparison_data, title="Rollout VRMSE")
+if True:
+    comparison_data = {
+        "Best FNO": best_fno_full_rollout,
+        "Best U-Net Classic": best_unet_classic_full_rollout,
+        "Best U-Net ConvNeXt": best_unet_convnext_full_rollout
+    }
+    plot_rollout_losses_comparison(comparison_data, title="Rollout VRMSE")
 
 if False:
     print(f"Baseline FNO mean: {baseline_fno_full_rollout.mean()}")
@@ -135,7 +172,7 @@ def plot_one_step_vrmse(model_files, dataset_name="turbulent_radiative_layer_2D"
             print(f"Error: File not found for model '{model_name}' at {file_path}")
 
     df = pd.DataFrame(data)
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(6, 4), dpi=200)
     chart = sns.barplot(
         data=df,
         x="Field",
@@ -147,10 +184,10 @@ def plot_one_step_vrmse(model_files, dataset_name="turbulent_radiative_layer_2D"
     )
 
     # 5. Formatting
-    plt.title(f"One-Step VRMSE by Field and Model", fontsize=14)
-    plt.ylabel("")
-    plt.xlabel("")
-    plt.legend(loc='upper right')
+    plt.title(f"Mean One-Step VRMSE", fontsize=16)
+    plt.ylabel("VRMSE")
+    plt.xlabel("Physical Field")
+    plt.legend().remove()
     plt.tight_layout()
     plt.show()
 
@@ -220,7 +257,7 @@ def plot_rollout_mean_vrmse(model_paths_map):
     df = pd.DataFrame(data)
 
     # Plotting
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(6, 4), dpi=200)
     sns.barplot(
         data=df,
         x="Field",
@@ -230,14 +267,14 @@ def plot_rollout_mean_vrmse(model_paths_map):
         edgecolor="black"
     )
 
-    plt.title("Mean Full Rollout VRMSE by Field and Model", fontsize=14)
-    plt.ylabel("", fontsize=12)
-    plt.xlabel("")
-    plt.legend(loc='upper right')
+    plt.title("Mean Rollout VRMSE", fontsize=16)
+    plt.ylabel("VRMSE", fontsize=12)
+    plt.xlabel("Physical Field", fontsize=12)
+    plt.legend().remove()
     plt.tight_layout()
     plt.show()
 
-if False:
+if True:
 
     paths = {
         "Best FNO": r"turbulent_radiative_layer_2D-fno_film-FNOFiLM-0.001\14\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0\full_VRMSE_rollout.npy",
@@ -255,7 +292,6 @@ if False:
         "Baseline FNO": r"turbulent_radiative_layer_2D-fno-FNO-0.001\13\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0\full_VRMSE_rollout.npy",
         "Baseline U-Net_Classic": r"turbulent_radiative_layer_2D-unet_classic-UNetClassic-0.001\5\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0\full_VRMSE_rollout.npy",
         "Baseline U-Net_ConvNeXt": r"turbulent_radiative_layer_2D-unet_convnext-UNetConvNext-0.001\8\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0\full_VRMSE_rollout.npy",
-
     }
 
     plot_rollout_mean_vrmse(paths)
@@ -272,7 +308,7 @@ def plot_spectral_rollouts(model_paths_map):
     y_labels = ['High', 'Mid', 'Low']
 
     # 1. Setup Plot: 3 rows, 1 column for vertical stacking
-    fig, axes = plt.subplots(3, 1, figsize=(10, 15), sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(4, 6), sharex=True, dpi=200)
 
     # Set the main figure title, positioned higher to accommodate the legend row
     fig.suptitle("Spectral NMSE per frequency bin", fontsize=16, y=0.97)
@@ -306,6 +342,7 @@ def plot_spectral_rollouts(model_paths_map):
             if os.path.exists(file_path):
                 try:
                     data = np.load(file_path)
+                    data = np.where(data < 0.1, 0.1, data)
                     color, linestyle = get_model_color_linestyle(model_name)
 
                     line, = ax.plot(
@@ -329,205 +366,57 @@ def plot_spectral_rollouts(model_paths_map):
 
         # 4. Formatting per subplot
         ax.set_ylabel(label, fontsize=14)
+        ax.set_yscale('log')
         ax.grid(False)
-
-        # Make axis ticks less frequent
+        # Set Specific Ticks and Limits
+        # if label == 'Low':
+        #     ax.set_yticks([10])
+        # else:
+        #     ax.set_yticks([10])
+        ax.set_yticks([10], minor=False)
+        ax.set_ylim([0.08, 45])
+        # Ticks
+        custom_ticks = [0.1, 0.9, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        ax.yaxis.set_minor_locator(FixedLocator(custom_ticks))
         ax.xaxis.set_major_locator(MaxNLocator(nbins=6))
-        ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
+        # Removed y-axis MaxNLocator as it often conflicts with log scales
+        #ax.yaxis.set_major_locator(MaxNLocator(nbins=2))
 
     # 5. Global Legend row under the main title
-    # fig.legend(
-    #     lines,
-    #     labels,
-    #     loc='upper center',
-    #     bbox_to_anchor=(0.5, 0.94),
-    #     ncol=len(labels),
-    #     fontsize=12,
-    #     frameon=True
-    # )
-
-    # Set common x-label "T" on the bottom plot
-    axes[2].set_xlabel("T", fontsize=14)
-
-    # Adjust layout to accommodate suptitle and legend row
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-    plt.show()
-
-
-if True:
-    paths = {
-        "Best FNO": r"turbulent_radiative_layer_2D-fno_film-FNOFiLM-0.001\14\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
-        "Best U-Net_Classic": r"turbulent_radiative_layer_2D-unet_classic_film-UNetClassicFiLM-0.001\13\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
-        "Best U-Net_ConvNeXt": r"turbulent_radiative_layer_2D-unet_convnext_film-UNetConvNextFiLM-0.001\7\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
-
-    }
-    plot_spectral_rollouts(paths)
-
-if False:
-    paths = {
-        "Baseline FNO": r"turbulent_radiative_layer_2D-fno-FNO-0.001\13\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
-        "Baseline U-Net_Classic": r"turbulent_radiative_layer_2D-unet_classic-UNetClassic-0.001\5\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
-        "Baseline U-Net_ConvNeXt": r"turbulent_radiative_layer_2D-unet_convnext-UNetConvNext-0.001\8\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0"
-    }
-
-    plot_spectral_rollouts(paths)
-
-
-def plot_spectral_rollouts_both(model_paths_map):
-    # Mapping axes to bins: High (Top), Mid, Low (Bottom)
-    bin_indices = [2, 1, 0]
-    y_labels = ['High', 'Mid', 'Low']
-
-    fig, axes = plt.subplots(3, 1, figsize=(10, 15), sharex=True)
-    fig.suptitle("Spectral NMSE: Baseline vs. Improved Stability", fontsize=16, fontweight='bold', y=0.97)
-
-    def get_style(model_name):
-        name_lower = model_name.lower()
-        # Architecture Color
-        if 'fno' in name_lower:
-            color = 'tab:blue'
-        elif 'classic' in name_lower:
-            color = 'tab:orange'
-        elif 'convnext' in name_lower:
-            color = 'tab:green'
-        else:
-            color = 'black'
-
-        # Version Style: Baseline is dashed, Improved is solid
-        linestyle = 'dashed' if 'baseline' in name_lower else 'solid'
-        # Improved models get a thicker line for emphasis
-        linewidth = 2.0 if 'baseline' in name_lower else 3.0
-
-        return color, linestyle, linewidth
-
-    lines, labels = [], []
-
-    for i, ax in enumerate(axes):
-        bin_idx = bin_indices[i]
-        for model_name, base_path in model_paths_map.items():
-            filename = f"full_spectral_error_nmse_per_bin_{bin_idx}_rollout.npy"
-            file_path = os.path.join(base_path, filename)
-
-            if os.path.exists(file_path):
-                data = np.load(file_path)
-                color, linestyle, lw = get_style(model_name)
-                line, = ax.plot(data, color=color, linestyle=linestyle, linewidth=lw, alpha=0.9)
-
-                if i == 0:
-                    lines.append(line)
-                    labels.append(model_name)
-
-        ax.set_ylabel(y_labels[i], fontsize=14, fontweight='bold')
-        ax.grid(False)
-        ax.xaxis.set_major_locator(MaxNLocator(nbins=6))
-        ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
-
-    # Single horizontal legend
-    fig.legend(lines, labels, loc='upper center', bbox_to_anchor=(0.5, 0.94),
-               ncol=3, fontsize=10, frameon=False)
-
-    axes[2].set_xlabel("Rollout Steps (T)", fontsize=14, fontweight='bold')
-    plt.tight_layout(rect=[0, 0.03, 1, 0.92])
-    plt.show()
-
-
-if False:
-    paths = {
-        "Best FNO": r"turbulent_radiative_layer_2D-fno_film-FNOFiLM-0.001\14\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
-        "Best U-Net_Classic": r"turbulent_radiative_layer_2D-unet_classic_film-UNetClassicFiLM-0.001\13\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
-        "Best U-Net_ConvNeXt": r"turbulent_radiative_layer_2D-unet_convnext_film-UNetConvNextFiLM-0.001\7\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
-        "Baseline FNO": r"turbulent_radiative_layer_2D-fno-FNO-0.001\13\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
-        "Baseline U-Net_Classic": r"turbulent_radiative_layer_2D-unet_classic-UNetClassic-0.001\5\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
-        "Baseline U-Net_ConvNeXt": r"turbulent_radiative_layer_2D-unet_convnext-UNetConvNext-0.001\8\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0"
-    }
-    plot_spectral_rollouts_both(paths)
-
-
-def plot_rollout_mean_vrmse(model_paths_map):
-    """
-    Plots the mean full rollout VRMSE using a grouped bar chart with paired saturated colors.
-    """
-    field_map = {
-        'P': 'pressure',
-        r'$V_y$': 'velocity_y',
-        r'$V_x$': 'velocity_x',
-        r'$\rho$': 'density'
-    }
-
-    data = []
-
-    # Identify architecture families for color grouping
-    for model_name, base_dir in model_paths_map.items():
-
-        for label, field_name in field_map.items():
-            filename = f"{field_name}_VRMSE_rollout.npy"
-            file_path = os.path.join(base_dir, filename)
-
-            if os.path.exists(file_path):
-                try:
-                    rollout_array = np.load(file_path)
-                    mean_loss = rollout_array.mean()
-
-                    data.append({
-                        "Model": model_name,
-                        "Field": label,
-                        "Mean Rollout VRMSE": mean_loss
-                    })
-                except Exception as e:
-                    print(f"Error loading {filename} for {model_name}: {e}")
-
-    df = pd.DataFrame(data)
-
-    # 1. Define the Paired Saturated Palette
-    # You must ensure the order of models in model_paths_map matches this palette,
-    # or use a mapping dictionary as shown below.
-    # [FNO-Base, FNO-Imp, Classic-Base, Classic-Imp, Conv-Base, Conv-Imp]
-    paired_colors = {
-        "Baseline FNO": "#9ecae1",  # Light Blue
-        "Best FNO": "#084594",  # Dark Blue
-        "Baseline U-Net_Classic": "#fdae6b",  # Light Orange
-        "Best U-Net_Classic": "#d94801",  # Dark Orange
-        "Baseline U-Net_ConvNeXt": "#a1d99b",  # Light Green
-        "Best U-Net_ConvNeXt": "#006d2c"  # Dark Green
-    }
-
-    plt.figure(figsize=(12, 7))
-
-    # 2. Plotting with manual color mapping
-    ax = sns.barplot(
-        data=df,
-        x="Field",
-        y="Mean Rollout VRMSE",
-        hue="Model",
-        palette=paired_colors,
-        edgecolor="black",
-        width=0.8
+    # print(lines, labels)
+    fig.legend(
+        lines,
+        labels,
+        loc='upper center',
+        bbox_to_anchor=(0.5, 0.94),
+        ncol=len(labels),
+        fontsize=12,
+        frameon=True
     )
 
-    # 3. Styling and Legend row under title
-    plt.title("Mean Full Rollout VRMSE: Architecture & Stability Comparison",
-              fontsize=15, fontweight='bold', pad=25)
-    plt.ylabel("Mean VRMSE")
-    plt.xlabel("")
+    # Set common x-label "T" on the bottom plot
+    axes[2].set_xlabel("Time Step", fontsize=14)
 
-    # Place legend as horizontal row directly under the title
-    plt.legend(bbox_to_anchor=(0.5, 1.08), loc='upper center',
-               ncol=3, frameon=False, fontsize=10)
-
-    plt.grid(axis='y', linestyle='--', alpha=0.4)
-    plt.tight_layout()
+    # Adjust layout to accommodate suptitle and legend row
+    plt.tight_layout(rect=[0, 0.03, 1, 0.92]) # 0.92
     plt.show()
 
 
-# Example Usage
 if False:
-    # Ensure keys match the 'paired_colors' dictionary exactly
+    paths = {
+        "FNO IC-push": r"turbulent_radiative_layer_2D-fno_film-FNOFiLM-0.001\14\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
+        "U-Net_Classic FiLM-push": r"turbulent_radiative_layer_2D-unet_classic_film-UNetClassicFiLM-0.001\13\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
+        "U-Net_ConvNeXt IC-push": r"turbulent_radiative_layer_2D-unet_convnext_film-UNetConvNextFiLM-0.001\7\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
+
+    }
+    plot_spectral_rollouts(paths)
+
+if False:
     paths = {
         "Baseline FNO": r"turbulent_radiative_layer_2D-fno-FNO-0.001\13\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
-        "Best FNO": r"turbulent_radiative_layer_2D-fno_film-FNOFiLM-0.001\14\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
         "Baseline U-Net_Classic": r"turbulent_radiative_layer_2D-unet_classic-UNetClassic-0.001\5\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
-        "Best U-Net_Classic": r"turbulent_radiative_layer_2D-unet_classic_film-UNetClassicFiLM-0.001\13\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
-        "Baseline U-Net_ConvNeXt": r"turbulent_radiative_layer_2D-unet_convnext-UNetConvNext-0.001\8\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
-        "Best U-Net_ConvNeXt": r"turbulent_radiative_layer_2D-unet_convnext_film-UNetConvNextFiLM-0.001\7\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
+        "Baseline U-Net_ConvNeXt": r"turbulent_radiative_layer_2D-unet_convnext-UNetConvNext-0.001\8\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0"
     }
-    plot_rollout_mean_vrmse(paths)
+
+    plot_spectral_rollouts(paths)
+
