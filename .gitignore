@@ -8,6 +8,7 @@ dist/
 Thumbs.db
 .idea/
 venv
+.claude
 
 #Ignoring the data
 datasets/active_matter/data/
