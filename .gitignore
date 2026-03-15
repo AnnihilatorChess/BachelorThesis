@@ -8,7 +8,9 @@ dist/
 Thumbs.db
 .idea/
 venv
+
 .claude
+Practical_Work_report.pdf
 
 #Ignoring the data
 datasets/active_matter/data/
@@ -49,6 +51,7 @@ datasets/acoustic_scattering_maze/gif/
 the_well/benchmark/scripts_to_launch/
 the_well/benchmark/write_bash_script.ipynb
 the_well/benchmark/checkpoints/
+the_well/benchmark/experiments/
 datasets/convective_envelope_rsg/data/
 datasets/MHD_64/data/
 datasets/MHD_256/data/
