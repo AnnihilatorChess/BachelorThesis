@@ -1,5 +1,6 @@
 from .afno import AFNO
 from .avit import AViT
+from .cno import CNO
 from .dilated_resnet import DilatedResNet
 from .fno import FNO
 from .refno import ReFNO
@@ -15,6 +16,7 @@ from .unet_convnext_film import UNetConvNextFiLM
 __all__ = [
     "FNO", "FNOFiLM",
     "TFNO",
+    "CNO",
     "UNetClassic", "UNetClassicFiLM",
     "UNetConvNext", "UNetConvNextFiLM",
     "DilatedResNet",

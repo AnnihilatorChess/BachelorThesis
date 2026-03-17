@@ -44,8 +44,16 @@ def train(
 ):
     """Instantiate the different objects required for training and run the training loop."""
     validation_mode = cfg.validation_mode
-    if cfg.trainer["pushforward"]:
+    bundle_size = cfg.get("temporal_bundle_size", 1)
+
+    # Set n_steps_output_train based on pushforward and bundling
+    if cfg.trainer["pushforward"] and bundle_size > 1:
+        cfg.data["n_steps_output_train"] = bundle_size * 4
+    elif cfg.trainer["pushforward"]:
         cfg.data["n_steps_output_train"] = 4
+    elif bundle_size > 1:
+        cfg.data["n_steps_output_train"] = bundle_size
+
     logger.info(f"Instantiate datamodule {cfg.data._target_}")
     datamodule: WellDataModule = instantiate(
         cfg.data, world_size=world_size, rank=rank, data_workers=cfg.data_workers
@@ -57,10 +65,10 @@ def train(
         cfg.data.n_steps_input * dset_metadata.n_fields
         + dset_metadata.n_constant_fields
     )
-    n_output_fields = dset_metadata.n_fields
+    n_output_fields = dset_metadata.n_fields * bundle_size
 
     logger.info(
-        f"Instantiate model {cfg.model._target_}",
+        f"Instantiate model {cfg.model._target_} (bundle_size={bundle_size})",
     )
 
     model: torch.nn.Module = instantiate(
