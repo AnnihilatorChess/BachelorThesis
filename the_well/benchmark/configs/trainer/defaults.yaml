@@ -19,3 +19,9 @@ pushforward_final_probs: [0.4, 0.2, 0.2, 0.2]
 pushforward_warmup_epochs: 20
 # FiLM configs
 film: True # other FiLM params are in the model config
+# Noise injection configs
+noise_injection: False
+noise_std: 0.01
+noise_anneal: False # linearly increase from 0 to noise_std over first half of training
+# Temporal bundling configs
+temporal_bundle_size: 1 # 1 = standard single-step, K > 1 = predict K timesteps at once

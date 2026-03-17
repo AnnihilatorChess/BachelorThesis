@@ -66,6 +66,10 @@ class Trainer:
         pushforward_warmup_epochs: int = 10,
         pushforward_final_probs: list = (0.4, 0.2, 0.2, 0.2),
         film: bool = False,
+        noise_injection: bool = False,
+        noise_std: float = 0.01,
+        noise_anneal: bool = False,
+        temporal_bundle_size: int = 1,
     ):
         """
         Class in charge of the training loop. It performs train, validation and test.
@@ -148,6 +152,12 @@ class Trainer:
         self.pushforward_warmup_epochs = pushforward_warmup_epochs
         self.pushforward_final_probs = pushforward_final_probs
         self.film = film
+        self.noise_injection = noise_injection
+        self.noise_std = noise_std
+        self.noise_anneal = noise_anneal
+        self._current_epoch = 1
+        self.bundle_size = temporal_bundle_size
+        self.n_fields = self.dset_metadata.n_fields
         if self.datamodule.train_dataset.use_normalization:
             self.dset_norm = self.datamodule.train_dataset.norm
         if formatter == "channels_first_default":
@@ -199,6 +209,16 @@ class Trainer:
             checkpoint["epoch"] + 1
         )  # Saves after training loop, so start at next epoch
 
+    def _add_noise(self, x, epoch):
+        """Add Gaussian noise to input tensor during training for distribution shift robustness."""
+        if not self.noise_injection:
+            return x
+        if self.noise_anneal:
+            std = self.noise_std * min(1.0, epoch / max(self.max_epoch * 0.5, 1))
+        else:
+            std = self.noise_std
+        return x + torch.randn_like(x) * std
+
     def normalize(self, batch):
         if hasattr(self, "dset_norm") and self.dset_norm:
             batch["input_fields"] = self.dset_norm.normalize_flattened(
@@ -233,14 +253,22 @@ class Trainer:
         return batch, prediction
 
     def rollout_model(self, model, batch, formatter, train=True):
-        """Rollout the model for as many steps as we have data for."""
+        """Rollout the model for as many steps as we have data for.
+
+        Supports temporal bundling: when bundle_size > 1, the model predicts K
+        timesteps at once, reducing the number of autoregressive steps.
+        """
         inputs, y_ref = formatter.process_input(batch)
         rollout_steps = min(
             y_ref.shape[1], self.max_rollout_steps
         )  # Number of timesteps in target
         y_ref = y_ref[:, :rollout_steps]
-        # Create a moving batch of one step at a time
-        moving_batch = batch
+        if not train:
+            if hasattr(self, "dset_norm") and self.dset_norm:
+                y_ref = self.dset_norm.denormalize_flattened(y_ref, "variable")
+
+        # Create a moving batch
+        moving_batch = dict(batch)
         moving_batch["input_fields"] = moving_batch["input_fields"].to(self.device)
         if "constant_fields" in moving_batch:
             moving_batch["constant_fields"] = moving_batch["constant_fields"].to(
@@ -252,54 +280,70 @@ class Trainer:
         current_time = None
         dt = None
         if self.film:
-            # t_cool is constant for the whole rollout, shape: [B, 1]
             t_cool = moving_batch["constant_scalars"].to(self.device)
             t_cool = self.norm_t_cool(t_cool)
-
-            # get current_time and interval between time steps
-            grid_time = moving_batch["input_time_grid"].to(self.device) # [B, T_in]
-            dt = (grid_time[:, -1] - grid_time[:, -2]).unsqueeze(1) # [B, 1]
+            grid_time = moving_batch["input_time_grid"].to(self.device)
+            dt = (grid_time[:, -1] - grid_time[:, -2]).unsqueeze(1)
             dt = self.norm_time(dt)
-            current_time = grid_time[:, -1].unsqueeze(1) # [B, 1]
+            current_time = grid_time[:, -1].unsqueeze(1)
             current_time = self.norm_time(current_time)
 
+        K = self.bundle_size
         y_preds = []
-        for i in range(rollout_steps):
-            if not train:
+        step = 0
+        while step < rollout_steps:
+            remaining = rollout_steps - step
+
+            if not train and self.datamodule.val_dataset.use_normalization and step > 0:
                 moving_batch = self.normalize(moving_batch)
 
             inputs, _ = formatter.process_input(moving_batch)
             inputs = [x.to(self.device) for x in inputs]
 
-            # we have extra model inputs for the film models
+            # Add noise during training for distribution shift robustness
+            if train and self.noise_injection:
+                inputs = [self._add_noise(inputs[0], self._current_epoch)] + list(inputs[1:])
+
             if self.film:
                 y_pred = model(*inputs, t_cool=t_cool, time=current_time)
-                current_time += dt
+                current_time += dt * K
             else:
                 y_pred = model(*inputs)
 
-            y_pred = formatter.process_output_channel_last(y_pred)
+            # Unbundle: [B, K*C, H, W] -> [B, K, H, W, C]
+            y_pred_bundle = formatter.process_output_unbundle(y_pred, K, self.n_fields)
 
+            # Handle denormalization for validation
             if not train:
-                moving_batch, y_pred = self.denormalize(moving_batch, y_pred)
+                for k_idx in range(min(K, remaining)):
+                    single_pred = y_pred_bundle[:, k_idx]
+                    moving_batch, single_pred = self.denormalize(moving_batch, single_pred)
+                    y_pred_bundle = y_pred_bundle.clone()
+                    y_pred_bundle[:, k_idx] = single_pred
 
+            # Truncate if this is the last bundle and doesn't fill completely
+            if remaining < K:
+                y_pred_bundle = y_pred_bundle[:, :remaining]
+
+            # Delta dataset handling
             if (not train) and self.is_delta:
-                assert {
-                    moving_batch["input_fields"][:, -1, ...].shape == y_pred.shape
-                }, (
-                    f"Mismatching shapes between last input timestep {moving_batch[:, -1, ...].shape}\
-                and prediction {y_pred.shape}"
-                )
-                y_pred = moving_batch["input_fields"][:, -1, ...] + y_pred
-            y_pred = formatter.process_output_expand_time(y_pred)
-            # If not last step, update moving batch for autoregressive prediction
-            if i != rollout_steps - 1:
+                for k_idx in range(y_pred_bundle.shape[1]):
+                    y_pred_bundle[:, k_idx] = (
+                        moving_batch["input_fields"][:, -1, ...] + y_pred_bundle[:, k_idx]
+                    )
+
+            # Update moving batch for next iteration
+            steps_taken = y_pred_bundle.shape[1]
+            if step + steps_taken < rollout_steps:
                 moving_batch["input_fields"] = torch.cat(
-                    [moving_batch["input_fields"][:, 1:], y_pred], dim=1
+                    [moving_batch["input_fields"][:, steps_taken:], y_pred_bundle], dim=1
                 )
-            y_preds.append(y_pred)
+
+            y_preds.append(y_pred_bundle)
+            step += steps_taken
+
         y_pred_out = torch.cat(y_preds, dim=1)
-        y_ref = y_ref.to(self.device)
+        y_ref = y_ref[:, :y_pred_out.shape[1]].to(self.device)
         return y_pred_out, y_ref
 
     def temporal_split_losses(
@@ -464,12 +508,16 @@ class Trainer:
         return current_weights
 
 
-    def predict_next_step(self, input_fields, t_cool=None, t=None):
+    def predict_next_step(self, input_fields, t_cool=None, t=None, add_noise=False):
         """Predicts the next step of the model."""
         input_batch = {"input_fields": input_fields, "output_fields": torch.tensor([0.0])}
 
         # this converts from shape [B, T, H, W, C] to [B, (TC), H, W]
         inputs, _ = self.formatter.process_input(input_batch)
+
+        # Add noise for distribution shift robustness (training only)
+        if add_noise and self.noise_injection:
+            inputs = (self._add_noise(inputs[0], self._current_epoch),) + inputs[1:]
 
         if self.film:
             y_pred = self.model(*inputs, t_cool=t_cool, time=t)
@@ -479,8 +527,29 @@ class Trainer:
         y_pred = self.formatter.process_output_expand_time(y_pred)
         return y_pred  # shape: [B, 1, H, W, C]
 
+    def predict_next_bundle(self, input_fields, t_cool=None, t=None, add_noise=False):
+        """Predicts the next K steps (temporal bundle) of the model."""
+        input_batch = {"input_fields": input_fields, "output_fields": torch.tensor([0.0])}
+        inputs, _ = self.formatter.process_input(input_batch)
+
+        if add_noise and self.noise_injection:
+            inputs = (self._add_noise(inputs[0], self._current_epoch),) + inputs[1:]
+
+        if self.film:
+            y_pred = self.model(*inputs, t_cool=t_cool, time=t)
+        else:
+            y_pred = self.model(*inputs)
+
+        # [B, K*C, H, W] -> [B, K, H, W, C]
+        return self.formatter.process_output_unbundle(y_pred, self.bundle_size, self.n_fields)
+
     def train_one_epoch_pushforward(self, epoch: int, dataloader: DataLoader):
-        """Train one epoch using the PushForward Trick. Requires n_output_steps_train=4"""
+        """Train one epoch using the PushForward Trick.
+
+        Supports temporal bundling: when bundle_size > 1, each pushforward step
+        advances K timesteps and the target is a K-step bundle.
+        """
+        self._current_epoch = epoch
         self.model.train()
         epoch_loss = 0.0
         pushforward_steps_sum = 0
@@ -489,12 +558,12 @@ class Trainer:
         pushforward_probs = self.get_pushforward_probs(epoch)
         batch_size = len(dataloader)
         print_interval = max(batch_size // 100, 1)
+        K = self.bundle_size
+
         for i, batch in enumerate(dataloader):
             pushforward_steps = random.choices([0, 1, 2, 3], pushforward_probs)[0]
             pushforward_steps_sum += pushforward_steps
             _, y_true_all = self.formatter.process_input(batch)
-            # we only need y_true for the last prediction
-            y_true = y_true_all[:, pushforward_steps].to(self.device)
 
             current_input_fields = batch["input_fields"].to(self.device)
 
@@ -503,31 +572,41 @@ class Trainer:
             current_time = None
             dt = None
             if self.film:
-                # t_cool is constant for the whole rollout, shape: [B, 1]
                 t_cool = batch["constant_scalars"].to(self.device)
                 t_cool = self.norm_t_cool(t_cool)
-
-                # get current_time and interval between time steps
-                grid_time = batch["input_time_grid"].to(self.device)  # [B, T_in]
-                dt = (grid_time[:, -1] - grid_time[:, -2]).unsqueeze(1)  # [B, 1]
+                grid_time = batch["input_time_grid"].to(self.device)
+                dt = (grid_time[:, -1] - grid_time[:, -2]).unsqueeze(1)
                 dt = self.norm_time(dt)
-                current_time = grid_time[:, -1].unsqueeze(1)  # [B, 1]
+                current_time = grid_time[:, -1].unsqueeze(1)
                 current_time = self.norm_time(current_time)
 
-            # push forward with no gradients
-            with torch.no_grad():
-                for s in range(pushforward_steps):
-                    y_pred = self.predict_next_step(current_input_fields, t_cool, current_time)
+            if K == 1:
+                # Original single-step pushforward (backward compatible)
+                y_true = y_true_all[:, pushforward_steps].to(self.device)
 
-                    # Update moving batch, cut first and add prediction, update time for FiLM
-                    current_input_fields = torch.cat([current_input_fields[:, 1:], y_pred], dim=1)
-                    if self.film:
-                        current_time += dt
+                with torch.no_grad():
+                    for s in range(pushforward_steps):
+                        y_pred = self.predict_next_step(current_input_fields, t_cool, current_time)
+                        current_input_fields = torch.cat([current_input_fields[:, 1:], y_pred], dim=1)
+                        if self.film:
+                            current_time += dt
 
-            # predict based on pushforward prediction
-            y_last = self.predict_next_step(current_input_fields, t_cool, current_time)
-            # loss and gradient updates
-            loss = self.loss_fn(y_last, y_true.unsqueeze(1), self.dset_metadata).mean()
+                y_last = self.predict_next_step(current_input_fields, t_cool, current_time, add_noise=True)
+                loss = self.loss_fn(y_last, y_true.unsqueeze(1), self.dset_metadata).mean()
+            else:
+                # Bundle-level pushforward: each pushforward step advances K timesteps
+                y_true = y_true_all[:, pushforward_steps * K:(pushforward_steps + 1) * K].to(self.device)
+
+                with torch.no_grad():
+                    for s in range(pushforward_steps):
+                        y_pred_bundle = self.predict_next_bundle(current_input_fields, t_cool, current_time)
+                        current_input_fields = torch.cat([current_input_fields[:, K:], y_pred_bundle], dim=1)
+                        if self.film:
+                            current_time += dt * K
+
+                y_last_bundle = self.predict_next_bundle(current_input_fields, t_cool, current_time, add_noise=True)
+                loss = self.loss_fn(y_last_bundle, y_true, self.dset_metadata).mean()
+
             self.grad_scaler.scale(loss).backward()
             self.grad_scaler.step(self.optimizer)
             self.grad_scaler.update()
@@ -548,6 +627,7 @@ class Trainer:
 
     def train_one_epoch(self, epoch: int, dataloader: DataLoader) -> float:
         """Train the model for one epoch by looping over the dataloader."""
+        self._current_epoch = epoch
         self.model.train()
         epoch_loss = 0.0
         train_logs = {}
