@@ -636,7 +636,7 @@ class Trainer:
                 val_loss_dict |= {"valid": val_loss, "epoch": epoch}
                 wandb.log(val_loss_dict, step=epoch)
 
-                val_vrmse = val_loss_dict[f"{self.dset_metadata.dataset_name}/full_VRMSE_T=all"]
+                val_vrmse = val_loss_dict[f"valid_{self.dset_metadata.dataset_name}/full_VRMSE_T=all"]
                 if self.best_val_loss is None or val_vrmse < self.best_val_loss:
                     self.save_model(
                         epoch, val_loss, os.path.join(self.checkpoint_folder, "best.pt")
