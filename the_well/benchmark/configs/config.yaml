@@ -17,4 +17,4 @@ data:
 # model:
 #   gradient_checkpointing: False
 data_workers: 14
-wandb_project_name: "Baseline"
+wandb_project_name: "bsc_data_test"

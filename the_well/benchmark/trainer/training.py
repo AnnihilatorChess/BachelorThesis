@@ -487,7 +487,8 @@ class Trainer:
         train_logs = {}
         start_time = time.time()
         pushforward_probs = self.get_pushforward_probs(epoch)
-
+        batch_size = len(dataloader)
+        print_interval = max(batch_size // 100, 1)
         for i, batch in enumerate(dataloader):
             pushforward_steps = random.choices([0, 1, 2, 3], pushforward_probs)[0]
             pushforward_steps_sum += pushforward_steps
@@ -533,7 +534,7 @@ class Trainer:
             self.optimizer.zero_grad()
             epoch_loss += loss.item()
 
-            if i % 10 == 0:
+            if i % print_interval == 0:
                 logger.info(
                     f"Epoch {epoch}, Batch {i + 1}/{len(dataloader)}: loss {loss.item()}, pushforward steps {pushforward_steps}"
                 )
@@ -552,6 +553,8 @@ class Trainer:
         train_logs = {}
         start_time = time.time()  # Don't need to sync this.
         batch_start = time.time()
+        batch_size = len(dataloader)
+        print_interval = max(batch_size // 100, 1)
         for i, batch in enumerate(dataloader):
             with torch.autocast(
                 self.device.type, enabled=self.enable_amp, dtype=self.amp_type
@@ -571,9 +574,10 @@ class Trainer:
             epoch_loss += loss.item() / len(dataloader)
             backward_time = time.time() - batch_start - forward_time - batch_time
             total_time = time.time() - batch_start
-            logger.info(
-                f"Epoch {epoch}, Batch {i + 1}/{len(dataloader)}: loss {loss.item()}, total_time {total_time}, batch time {batch_time}, forward time {forward_time}, backward time {backward_time}"
-            )
+            if i % print_interval == 0:
+                logger.info(
+                    f"Epoch {epoch}, Batch {i + 1}/{len(dataloader)}: loss {loss.item()}, total_time {total_time}, batch time {batch_time}, forward time {forward_time}, backward time {backward_time}"
+                )
             batch_start = time.time()
         train_logs["time_per_train_iter"] = (time.time() - start_time) / len(dataloader)
         train_logs["train_loss"] = epoch_loss
@@ -632,7 +636,7 @@ class Trainer:
                 val_loss_dict |= {"valid": val_loss, "epoch": epoch}
                 wandb.log(val_loss_dict, step=epoch)
 
-                val_vrmse = val_loss_dict[f"valid_turbulent_radiative_layer_2D/full_VRMSE_T=all"]
+                val_vrmse = val_loss_dict[f"{self.dset_metadata.dataset_name}/full_VRMSE_T=all"]
                 if self.best_val_loss is None or val_vrmse < self.best_val_loss:
                     self.save_model(
                         epoch, val_loss, os.path.join(self.checkpoint_folder, "best.pt")
