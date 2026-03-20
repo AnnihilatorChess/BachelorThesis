@@ -70,7 +70,11 @@ def train(
         dim_in=n_input_fields,
         dim_out=n_output_fields,
     )
-    summary(model, depth=5)
+    try:
+        summary(model, depth=5)
+    except UnicodeEncodeError:
+        logger.warning("Could not print model summary (encoding issue on Windows)")
+        pass
 
     if is_distributed:
         torch.cuda.set_device(local_rank)
@@ -130,6 +134,10 @@ def train(
 
 @hydra.main(version_base=None, config_path=CONFIG_DIR, config_name=CONFIG_NAME)
 def main(cfg: DictConfig):
+    # Resolve experiment_dir relative to this script's directory if it is a relative path
+    if not osp.isabs(cfg.experiment_dir):
+        cfg.experiment_dir = osp.join(osp.dirname(osp.abspath(__file__)), cfg.experiment_dir)
+
     # Torch optimization settings
     torch.backends.cudnn.benchmark = (
         True  # If input size is fixed, this will usually the computation faster
