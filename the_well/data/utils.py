@@ -27,6 +27,7 @@ WELL_DATASETS = [
     "turbulent_radiative_layer_2D",
     "turbulent_radiative_layer_3D",
     "viscoelastic_instability",
+    "pdebench_swe",
 ]
 
 
