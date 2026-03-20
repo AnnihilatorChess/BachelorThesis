@@ -35,26 +35,10 @@ def create_mini_well(
         dim // spatial_downsample_factor for dim in mini_metadata.spatial_resolution
     )
 
-    # Update n_steps_per_simulation to reflect time downsampling
-    mini_metadata.n_steps_per_simulation = [
+    # Update n_steps_per_trajectory to reflect time downsampling
+    mini_metadata.n_steps_per_trajectory = [
         steps // time_downsample_factor
-        for steps in mini_metadata.n_steps_per_simulation
-    ]
-
-    # Update sample_shapes to reflect new spatial resolution and number of fields
-    mini_metadata.sample_shapes["input_fields"] = [
-        *mini_metadata.spatial_resolution,
-        mini_metadata.n_fields,
-    ]
-    mini_metadata.sample_shapes["output_fields"] = [
-        *mini_metadata.spatial_resolution,
-        mini_metadata.n_fields,
-    ]
-
-    # Update space_grid in sample_shapes to reflect new spatial resolution and spatial dimensions
-    mini_metadata.sample_shapes["space_grid"] = [
-        *mini_metadata.spatial_resolution,
-        mini_metadata.n_spatial_dims,
+        for steps in mini_metadata.n_steps_per_trajectory
     ]
 
     total_trajectories = 0

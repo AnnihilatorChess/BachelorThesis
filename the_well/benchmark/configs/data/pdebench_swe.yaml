@@ -1,0 +1,7 @@
+_target_: the_well.data.WellDataModule
+batch_size: 32
+well_base_path: ${server.well_base_path}
+well_dataset_name: pdebench_swe
+use_normalization: True
+min_dt_stride: 1
+max_dt_stride: 1
