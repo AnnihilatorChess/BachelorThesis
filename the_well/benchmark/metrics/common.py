@@ -45,3 +45,36 @@ class Metric(nn.Module):
     @staticmethod
     def eval(self, x, y, meta, **kwargs):
         raise NotImplementedError
+
+
+class SummaryMetric(nn.Module):
+    """Base class for metrics that return scalar-per-field summaries.
+
+    Unlike Metric which returns [T, C] tensors, SummaryMetric returns
+    dict[str, Tensor[C]] — one scalar per field per named output.
+    These metrics are processed separately from the standard validation suite
+    since they cannot pass through split_up_losses().
+    """
+
+    def forward(self, *args, **kwargs):
+        assert len(args) >= 3, "At least three arguments required (x, y, and meta)"
+        x, y, meta = args[:3]
+
+        if isinstance(x, np.ndarray):
+            x = torch.from_numpy(x)
+        if isinstance(y, np.ndarray):
+            y = torch.from_numpy(y)
+        assert isinstance(x, torch.Tensor), "x must be a torch.Tensor or np.ndarray"
+        assert isinstance(y, torch.Tensor), "y must be a torch.Tensor or np.ndarray"
+
+        n_spatial_dims = meta.n_spatial_dims
+        assert x.ndim >= n_spatial_dims + 1, (
+            "x must have at least n_spatial_dims + 1 dimensions"
+        )
+        assert y.ndim >= n_spatial_dims + 1, (
+            "y must have at least n_spatial_dims + 1 dimensions"
+        )
+        return self.eval(x, y, meta, **kwargs)
+
+    def eval(self, x, y, meta, **kwargs):
+        raise NotImplementedError
