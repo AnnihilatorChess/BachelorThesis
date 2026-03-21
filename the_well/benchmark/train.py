@@ -46,6 +46,9 @@ def train(
     validation_mode = cfg.validation_mode
     bundle_size = cfg.get("temporal_bundle_size", 1)
 
+    # Sync top-level temporal_bundle_size into trainer config
+    cfg.trainer["temporal_bundle_size"] = bundle_size
+
     # Set n_steps_output_train based on pushforward and bundling
     if cfg.trainer["pushforward"] and bundle_size > 1:
         cfg.data["n_steps_output_train"] = bundle_size * 4
