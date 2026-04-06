@@ -424,14 +424,11 @@ class Trainer:
                             loss_dict[loss_name] = (
                                 loss_dict.get(loss_name, 0.0) + loss_value / denom
                             )
-                # Summary metrics (scalar per field, skip split_up_losses)
-                for summary_fn in self.summary_suite:
+                # Summary metrics — only meaningful over long rollouts (full=True)
+                for summary_fn in self.summary_suite if full else []:
                     summary = summary_fn(y_pred, y_ref, self.dset_metadata)
                     for metric_name, values in summary.items():
-                        values = values.mean(0)  # average over batch if needed
-                        if values.ndim == 0:
-                            # Already scalar (single field), wrap
-                            values = values.unsqueeze(0)
+                        # values: [C], already batch-averaged; accumulate over dataloader batches
                         for fi, fname in enumerate(field_names):
                             if fi < values.shape[0]:
                                 key = f"{dset_name}/{fname}_{metric_name}"

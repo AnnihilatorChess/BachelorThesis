@@ -36,14 +36,14 @@ class ValidRolloutLength(SummaryMetric):
         # Find first timestep exceeding threshold per field
         # If never exceeded, valid length = T
         any_exceeded = exceeded.any(dim=0)  # [C]
-        # argmax on bool tensor returns first True index
-        first_exceed = exceeded.float().argmax(dim=0)  # [C]
-        # If never exceeded, set to T
-        valid_length = torch.where(any_exceeded, first_exceed, torch.tensor(T, device=nrmse.device).float())
+        # argmax on bool tensor returns first True index (as int64)
+        first_exceed = exceeded.long().argmax(dim=0)  # [C]
+        # If never exceeded, valid length = T; keep as int64 throughout
+        valid_length = torch.where(any_exceeded, first_exceed, torch.tensor(T, dtype=torch.long, device=nrmse.device))
 
         return {
-            "valid_rollout_length": valid_length,
-            "valid_rollout_fraction": valid_length / T,
+            "valid_rollout_length": valid_length.float(),
+            "valid_rollout_fraction": valid_length.float() / T,
         }
 
 
@@ -112,8 +112,9 @@ class ErrorGrowthRate(SummaryMetric):
 
         # Solve for each field: A @ [a, lambda]^T = log_nrmse
         # lstsq returns (solution, residuals, rank, singular_values)
-        result = torch.linalg.lstsq(A, log_nrmse)  # solution: [2, C]
-        growth_rate = result.solution[1]  # [C] — the lambda coefficient
+        # Run on CPU: torch.linalg.lstsq on CUDA requires MAGMA and a driver arg
+        result = torch.linalg.lstsq(A.cpu(), log_nrmse.cpu())  # solution: [2, C]
+        growth_rate = result.solution[1].to(device)  # [C] — the lambda coefficient
 
         return {"error_growth_rate": growth_rate}
 
@@ -145,10 +146,12 @@ class CorrelationTime(SummaryMetric):
         dropped = pearson < self.threshold  # [T, C]
 
         any_dropped = dropped.any(dim=0)  # [C]
-        first_drop = dropped.float().argmax(dim=0)  # [C]
-        corr_time = torch.where(any_dropped, first_drop, torch.tensor(T, device=pearson.device).float())
+        # argmax on bool tensor returns first True index (as int64)
+        first_drop = dropped.long().argmax(dim=0)  # [C]
+        # If never dropped, correlation time = T; keep as int64 throughout
+        corr_time = torch.where(any_dropped, first_drop, torch.tensor(T, dtype=torch.long, device=pearson.device))
 
         return {
-            "correlation_time": corr_time,
-            "correlation_time_fraction": corr_time / T,
+            "correlation_time": corr_time.float(),
+            "correlation_time_fraction": corr_time.float() / T,
         }
