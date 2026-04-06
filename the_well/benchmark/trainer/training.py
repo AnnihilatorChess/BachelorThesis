@@ -16,6 +16,12 @@ from the_well.benchmark.metrics import (
     plot_all_time_metrics,
     validation_metric_suite,
     validation_plots,
+    CorrelationTime,
+    ErrorGrowthRate,
+    HighFreqEnergyRatio,
+    NRMSEAreaUnderCurve,
+    SobolevH1,
+    ValidRolloutLength,
 )
 from the_well.data.data_formatter import (
     DefaultChannelsFirstFormatter,
@@ -66,6 +72,10 @@ class Trainer:
         pushforward_warmup_epochs: int = 10,
         pushforward_final_probs: list = (0.4, 0.2, 0.2, 0.2),
         film: bool = False,
+        extended_metrics: bool = True,
+        valid_rollout_threshold: float = 0.2,
+        correlation_time_threshold: float = 0.8,
+        hf_energy_cutoff_fraction: float = 0.5,
     ):
         """
         Class in charge of the training loop. It performs train, validation and test.
@@ -148,6 +158,20 @@ class Trainer:
         self.pushforward_warmup_epochs = pushforward_warmup_epochs
         self.pushforward_final_probs = pushforward_final_probs
         self.film = film
+        # Extended evaluation metrics (create fresh instances to avoid mutating module-level singletons)
+        if extended_metrics:
+            self.validation_suite += [
+                SobolevH1(),
+                HighFreqEnergyRatio(cutoff_fraction=hf_energy_cutoff_fraction),
+            ]
+            self.summary_suite = [
+                ValidRolloutLength(threshold=valid_rollout_threshold),
+                NRMSEAreaUnderCurve(),
+                ErrorGrowthRate(),
+                CorrelationTime(threshold=correlation_time_threshold),
+            ]
+        else:
+            self.summary_suite = []
         if self.datamodule.train_dataset.use_normalization:
             self.dset_norm = self.datamodule.train_dataset.norm
         if formatter == "channels_first_default":
@@ -400,6 +424,17 @@ class Trainer:
                             loss_dict[loss_name] = (
                                 loss_dict.get(loss_name, 0.0) + loss_value / denom
                             )
+                # Summary metrics — only meaningful over long rollouts (full=True)
+                for summary_fn in self.summary_suite if full else []:
+                    summary = summary_fn(y_pred, y_ref, self.dset_metadata)
+                    for metric_name, values in summary.items():
+                        # values: [C], already batch-averaged; accumulate over dataloader batches
+                        for fi, fname in enumerate(field_names):
+                            if fi < values.shape[0]:
+                                key = f"{dset_name}/{fname}_{metric_name}"
+                                loss_dict[key] = loss_dict.get(key, 0.0) + values[fi] / denom
+                        key_full = f"{dset_name}/full_{metric_name}"
+                        loss_dict[key_full] = loss_dict.get(key_full, 0.0) + values.mean() / denom
                 count += 1
                 if not full and count >= self.short_validation_length:
                     break

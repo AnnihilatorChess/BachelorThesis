@@ -186,3 +186,65 @@ class binned_spectral_mse(Metric):
         out_dict |= nmse_dict
         # TODO Figure out better way to handle multi-output losses
         return out_dict
+
+
+class HighFreqEnergyRatio(Metric):
+    """Ratio of high-frequency energy in prediction vs reference.
+
+    Splits the power spectrum at cutoff_fraction * k_nyquist and computes
+    the ratio of total energy above that cutoff. Values >1 indicate spectral
+    blowup (energy piling up in high frequencies); <1 indicates spectral
+    damping (model smoothing out fine structure).
+
+    Returns:
+        [T, C] tensor of energy ratio per timestep and field.
+    """
+
+    def __init__(self, cutoff_fraction: float = 0.5):
+        super().__init__()
+        self.cutoff_fraction = cutoff_fraction
+
+    def eval(
+        self,
+        x: torch.Tensor,
+        y: torch.Tensor,
+        meta: WellMetadata,
+        eps: float = 1e-7,
+        **kwargs,
+    ) -> torch.Tensor:
+        spatial_dims = tuple(range(-meta.n_spatial_dims - 1, -1))
+        spatial_shape = tuple(x.shape[dim] for dim in spatial_dims)
+        ndim = len(spatial_dims)
+        device = x.device
+
+        # Compute isotropic wavenumber grid
+        wn_iso = torch.zeros(spatial_shape, device=device)
+        for i in range(ndim):
+            wn = 2 * np.pi * torch.fft.fftfreq(spatial_shape[i], device=device)
+            shape = [1] * ndim
+            shape[i] = spatial_shape[i]
+            wn_iso = wn_iso + wn.reshape(shape) ** 2
+        wn_iso = torch.sqrt(wn_iso)
+
+        # Cutoff wavenumber
+        k_nyquist = np.pi * np.sqrt(ndim)
+        k_cutoff = self.cutoff_fraction * k_nyquist
+        hf_mask = (wn_iso >= k_cutoff).float()  # [H, W, ...]
+
+        # Power spectra
+        fx = fftn(x, meta)
+        fy = fftn(y, meta)
+        ps_x = torch.abs(fx) ** 2  # [T, H, W, ..., C]
+        ps_y = torch.abs(fy) ** 2
+
+        # Reshape mask for broadcasting over T and C dims
+        # ps shape: [..., *spatial, C], mask shape: [*spatial]
+        # We need mask to broadcast: add dims for T (front) and C (back)
+        mask_shape = [1] * (ps_x.ndim - ndim - 1) + list(spatial_shape) + [1]
+        hf_mask = hf_mask.reshape(mask_shape)
+
+        # Sum high-frequency energy over spatial dims
+        pred_hf = (ps_x * hf_mask).sum(dim=spatial_dims)  # [T, C]
+        ref_hf = (ps_y * hf_mask).sum(dim=spatial_dims)  # [T, C]
+
+        return pred_hf / (ref_hf + eps)
