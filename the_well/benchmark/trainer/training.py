@@ -287,9 +287,8 @@ class Trainer:
             y_ref.shape[1], self.max_rollout_steps
         )  # Number of timesteps in target
         y_ref = y_ref[:, :rollout_steps]
-        if not train:
-            if hasattr(self, "dset_norm") and self.dset_norm:
-                y_ref = self.dset_norm.denormalize_flattened(y_ref, "variable")
+        # NOTE: val/rollout_val datasets return physical (unnormalized) data by default,
+        # so y_ref is already in physical space — do NOT denormalize it here.
 
         # Create a moving batch
         moving_batch = dict(batch)
@@ -318,7 +317,7 @@ class Trainer:
         while step < rollout_steps:
             remaining = rollout_steps - step
 
-            if not train and self.datamodule.val_dataset.use_normalization and step > 0:
+            if not train:
                 moving_batch = self.normalize(moving_batch)
 
             inputs, _ = formatter.process_input(moving_batch)
@@ -338,22 +337,27 @@ class Trainer:
             y_pred_bundle = formatter.process_output_unbundle(y_pred, K, self.n_fields)
 
             # Handle denormalization for validation.
-            # Denormalize moving_batch once, then denormalize each bundle slice separately
-            # to avoid calling denormalize(moving_batch, ...) K times (which would
-            # apply the batch denormalization K times).
+            # For k_idx==0: denormalize both moving_batch and the prediction together
+            # (original single-step behaviour, keeps moving_batch in physical units).
+            # For k_idx>0: moving_batch is already in physical units, so only
+            # denormalize the prediction to avoid applying batch denorm K times.
             if not train:
-                moving_batch, _ = self.denormalize(moving_batch, y_pred_bundle[:, 0])
                 y_pred_bundle = y_pred_bundle.clone()
                 for k_idx in range(min(K, remaining)):
-                    if hasattr(self, "dset_norm") and self.dset_norm:
-                        if self.is_delta:
-                            y_pred_bundle[:, k_idx] = self.dset_norm.delta_denormalize_flattened(
-                                y_pred_bundle[:, k_idx], "variable"
-                            )
-                        else:
-                            y_pred_bundle[:, k_idx] = self.dset_norm.denormalize_flattened(
-                                y_pred_bundle[:, k_idx], "variable"
-                            )
+                    single_pred = y_pred_bundle[:, k_idx]
+                    if k_idx == 0:
+                        moving_batch, single_pred = self.denormalize(moving_batch, single_pred)
+                    else:
+                        if hasattr(self, "dset_norm") and self.dset_norm:
+                            if self.is_delta:
+                                single_pred = self.dset_norm.delta_denormalize_flattened(
+                                    single_pred, "variable"
+                                )
+                            else:
+                                single_pred = self.dset_norm.denormalize_flattened(
+                                    single_pred, "variable"
+                                )
+                    y_pred_bundle[:, k_idx] = single_pred
 
             # Truncate if this is the last bundle and doesn't fill completely
             if remaining < K:
