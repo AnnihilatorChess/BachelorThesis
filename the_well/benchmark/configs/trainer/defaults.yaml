@@ -25,3 +25,8 @@ noise_std: 0.01
 noise_anneal: False # linearly increase from 0 to noise_std over first half of training
 # Temporal bundling configs
 temporal_bundle_size: 1 # 1 = standard single-step, K > 1 = predict K timesteps at once
+# Extended evaluation metrics
+extended_metrics: True
+valid_rollout_threshold: 0.2 # nRMSE threshold for valid rollout length
+correlation_time_threshold: 0.8 # PearsonR threshold for correlation time
+hf_energy_cutoff_fraction: 0.5 # fraction of k_nyquist for high-freq boundary

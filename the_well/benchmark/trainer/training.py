@@ -16,6 +16,12 @@ from the_well.benchmark.metrics import (
     plot_all_time_metrics,
     validation_metric_suite,
     validation_plots,
+    CorrelationTime,
+    ErrorGrowthRate,
+    HighFreqEnergyRatio,
+    NRMSEAreaUnderCurve,
+    SobolevH1,
+    ValidRolloutLength,
 )
 from the_well.data.data_formatter import (
     DefaultChannelsFirstFormatter,
@@ -70,6 +76,10 @@ class Trainer:
         noise_std: float = 0.01,
         noise_anneal: bool = False,
         temporal_bundle_size: int = 1,
+        extended_metrics: bool = True,
+        valid_rollout_threshold: float = 0.2,
+        correlation_time_threshold: float = 0.8,
+        hf_energy_cutoff_fraction: float = 0.5,
     ):
         """
         Class in charge of the training loop. It performs train, validation and test.
@@ -158,6 +168,20 @@ class Trainer:
         self._current_epoch = 1
         self.bundle_size = temporal_bundle_size
         self.n_fields = self.dset_metadata.n_fields
+        # Extended evaluation metrics (create fresh instances to avoid mutating module-level singletons)
+        if extended_metrics:
+            self.validation_suite += [
+                SobolevH1(),
+                HighFreqEnergyRatio(cutoff_fraction=hf_energy_cutoff_fraction),
+            ]
+            self.summary_suite = [
+                ValidRolloutLength(threshold=valid_rollout_threshold),
+                NRMSEAreaUnderCurve(),
+                ErrorGrowthRate(),
+                CorrelationTime(threshold=correlation_time_threshold),
+            ]
+        else:
+            self.summary_suite = []
         if self.datamodule.train_dataset.use_normalization:
             self.dset_norm = self.datamodule.train_dataset.norm
         if formatter == "channels_first_default":
@@ -313,13 +337,23 @@ class Trainer:
             # Unbundle: [B, K*C, H, W] -> [B, K, H, W, C]
             y_pred_bundle = formatter.process_output_unbundle(y_pred, K, self.n_fields)
 
-            # Handle denormalization for validation
+            # Handle denormalization for validation.
+            # Denormalize moving_batch once, then denormalize each bundle slice separately
+            # to avoid calling denormalize(moving_batch, ...) K times (which would
+            # apply the batch denormalization K times).
             if not train:
+                moving_batch, _ = self.denormalize(moving_batch, y_pred_bundle[:, 0])
+                y_pred_bundle = y_pred_bundle.clone()
                 for k_idx in range(min(K, remaining)):
-                    single_pred = y_pred_bundle[:, k_idx]
-                    moving_batch, single_pred = self.denormalize(moving_batch, single_pred)
-                    y_pred_bundle = y_pred_bundle.clone()
-                    y_pred_bundle[:, k_idx] = single_pred
+                    if hasattr(self, "dset_norm") and self.dset_norm:
+                        if self.is_delta:
+                            y_pred_bundle[:, k_idx] = self.dset_norm.delta_denormalize_flattened(
+                                y_pred_bundle[:, k_idx], "variable"
+                            )
+                        else:
+                            y_pred_bundle[:, k_idx] = self.dset_norm.denormalize_flattened(
+                                y_pred_bundle[:, k_idx], "variable"
+                            )
 
             # Truncate if this is the last bundle and doesn't fill completely
             if remaining < K:
@@ -444,6 +478,17 @@ class Trainer:
                             loss_dict[loss_name] = (
                                 loss_dict.get(loss_name, 0.0) + loss_value / denom
                             )
+                # Summary metrics — only meaningful over long rollouts (full=True)
+                for summary_fn in self.summary_suite if full else []:
+                    summary = summary_fn(y_pred, y_ref, self.dset_metadata)
+                    for metric_name, values in summary.items():
+                        # values: [C], already batch-averaged; accumulate over dataloader batches
+                        for fi, fname in enumerate(field_names):
+                            if fi < values.shape[0]:
+                                key = f"{dset_name}/{fname}_{metric_name}"
+                                loss_dict[key] = loss_dict.get(key, 0.0) + values[fi] / denom
+                        key_full = f"{dset_name}/full_{metric_name}"
+                        loss_dict[key_full] = loss_dict.get(key_full, 0.0) + values.mean() / denom
                 count += 1
                 if not full and count >= self.short_validation_length:
                     break
