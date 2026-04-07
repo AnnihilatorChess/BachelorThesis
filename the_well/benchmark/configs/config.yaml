@@ -5,6 +5,7 @@ defaults:
   - server: ???
   - resume_overrides: no_overrides
 temporal_bundle_size: 1 # 1 = no bundling, K > 1 = predict K timesteps at once (top-level so Hydra doesn't pass it to WellDataModule)
+seed: 42 # global RNG seed for model init and dataloader shuffling; use --multirun seed=1,2,3 for multiple seeds
 data:
   n_steps_input: 4
   n_steps_output: 1

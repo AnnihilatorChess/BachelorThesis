@@ -5,8 +5,10 @@ warnings.filterwarnings("ignore")
 
 import logging
 import os.path as osp
+import random
 
 import hydra
+import numpy as np
 import torch
 import torch.distributed as dist
 import wandb
@@ -22,6 +24,15 @@ from the_well.data import WellDataModule
 
 logger = logging.getLogger("the_well")
 logger.setLevel(level=logging.DEBUG)
+
+
+def seed_everything(seed: int):
+    """Seed all RNGs for reproducibility: model init, dataloader shuffle, augmentations."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    logger.info(f"Global seed set to {seed}")
 
 # Retrieve configuration for hydra
 CONFIG_DIR = osp.join(osp.dirname(__file__), "configs")
@@ -154,6 +165,8 @@ def main(cfg: DictConfig):
         True  # If input size is fixed, this will usually the computation faster
     )
     torch.set_float32_matmul_precision("high")  # Use TF32 when supported
+    # Set global seed before anything else so model init and dataloaders are deterministic
+    seed_everything(cfg.seed)
     # Normal things
     (
         cfg,
@@ -166,15 +179,17 @@ def main(cfg: DictConfig):
 
     logger.info(f"Run experiment {experiment_name}")
     logger.info(f"Configuration:\n{OmegaConf.to_yaml(cfg)}")
-    # Initiate wandb logging
+    # Initiate wandb logging.
+    # group = experiment config without seed, so all seeds of the same run appear together.
+    # name  = experiment config + seed, so individual runs are distinguishable.
     wandb_logged_cfg = OmegaConf.to_container(cfg, resolve=True)
     wandb_logged_cfg["experiment_folder"] = experiment_folder
     wandb.init(
         dir=experiment_folder,
         project=cfg.wandb_project_name,
-        group=f"{cfg.data.well_dataset_name}",
+        group=experiment_name,
         config=wandb_logged_cfg,
-        name=experiment_name,
+        name=f"{experiment_name}-seed{cfg.seed}",
         resume=True,
     )
 

@@ -80,6 +80,7 @@ class Trainer:
         valid_rollout_threshold: float = 0.2,
         correlation_time_threshold: float = 0.8,
         hf_energy_cutoff_fraction: float = 0.5,
+        temporal_loss_boundaries=None,
     ):
         """
         Class in charge of the training loop. It performs train, validation and test.
@@ -182,6 +183,8 @@ class Trainer:
             ]
         else:
             self.summary_suite = []
+        # Store fixed boundaries if provided; None = compute relative at runtime
+        self.temporal_loss_boundaries = list(temporal_loss_boundaries) if temporal_loss_boundaries is not None else None
         if self.datamodule.train_dataset.use_normalization:
             self.dset_norm = self.datamodule.train_dataset.norm
         if formatter == "channels_first_default":
@@ -406,12 +409,16 @@ class Trainer:
         new_losses = {}
         time_logs = {}
         time_steps = loss_values.shape[0]  # we already average over batch
-        # Compute boundaries as equal-width intervals relative to actual rollout length.
-        # This makes the T=early:mid:late split meaningful for any dataset/trajectory length.
-        n_intervals = self.num_time_intervals
         import numpy as np
-        boundaries = list(np.linspace(0, time_steps, n_intervals + 1, dtype=int))
-        temporal_loss_intervals = sorted(list(set(boundaries)))
+        if self.temporal_loss_boundaries is not None:
+            # Use fixed boundaries (e.g. to match The Well paper tables).
+            # Clip any boundary that exceeds the actual rollout length, then append it.
+            boundaries = [b for b in self.temporal_loss_boundaries if b < time_steps]
+            temporal_loss_intervals = sorted(list(set(boundaries + [time_steps])))
+        else:
+            # Relative equal-width bins: safe default for any dataset / rollout length.
+            boundaries = list(np.linspace(0, time_steps, self.num_time_intervals + 1, dtype=int))
+            temporal_loss_intervals = sorted(list(set(boundaries)))
 
         # Split up losses by field
         for i, fname in enumerate(field_names):
