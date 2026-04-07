@@ -406,9 +406,12 @@ class Trainer:
         new_losses = {}
         time_logs = {}
         time_steps = loss_values.shape[0]  # we already average over batch
-        boundaries = [0, 6, 12, 13, 30]
-        # Ensure all boundaries are within the actual rollout length and add the final step
-        temporal_loss_intervals = sorted(list(set([b for b in boundaries if b < time_steps] + [time_steps])))
+        # Compute boundaries as equal-width intervals relative to actual rollout length.
+        # This makes the T=early:mid:late split meaningful for any dataset/trajectory length.
+        n_intervals = self.num_time_intervals
+        import numpy as np
+        boundaries = list(np.linspace(0, time_steps, n_intervals + 1, dtype=int))
+        temporal_loss_intervals = sorted(list(set(boundaries)))
 
         # Split up losses by field
         for i, fname in enumerate(field_names):
