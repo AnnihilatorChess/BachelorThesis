@@ -789,7 +789,7 @@ class Trainer:
                 rollout_val_loss, rollout_val_loss_dict = self.validation_loop(
                     rollout_val_dataloader,
                     valid_or_test="rollout_valid",
-                    full=epoch == self.max_epoch,
+                    full=True,
                     epoch=epoch,
                 )
                 logger.info(
