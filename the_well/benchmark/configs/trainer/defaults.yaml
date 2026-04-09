@@ -18,7 +18,7 @@ pushforward: False
 pushforward_final_probs: [0.4, 0.2, 0.2, 0.2]
 pushforward_warmup_epochs: 20
 # FiLM configs
-film: True # other FiLM params are in the model config
+film: False # other FiLM params are in the model config
 # Noise injection configs
 noise_injection: False
 noise_std: 0.01

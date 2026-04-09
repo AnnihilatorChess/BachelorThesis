@@ -18,5 +18,5 @@ data:
     _target_: the_well.data.datasets.WellDataset
 # model:
 #   gradient_checkpointing: False
-data_workers: 14
+data_workers: 9
 wandb_project_name: "bsc_data_test"
