@@ -3,5 +3,6 @@ defaults:
 
 epochs: 1
 val_frequency: 1
+formatter: channels_first_default
 loss_fn:
-  _target_: torch.nn.MSELoss
+  _target_: the_well.benchmark.metrics.MSE
