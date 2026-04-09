@@ -1,8 +1,12 @@
 # @package _global_
-# Server config for JKU student server.
+# Server config for JKU student server (Xeon E5-2630 v4, 10 cores / 20 threads).
 # By default uses the standard datasets/ folder relative to the project root.
 # Override with an absolute path if datasets are stored elsewhere, e.g.:
 #   data.well_base_path=/publicdata/the_well
 data:
   well_base_path: "../../datasets/"
 experiment_dir: "experiments/"
+# 3 workers per experiment: 3 concurrent runs × 3 workers = 9 total,
+# leaving headroom for main processes and GPU driver threads on a 10-core CPU.
+# 9 workers (the base default) causes severe CPU oversubscription → GPU stalls.
+data_workers: 3

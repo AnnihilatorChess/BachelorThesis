@@ -141,6 +141,17 @@ All required Well attributes are synthesized:
 - `mean`, `std`, `rms` of the field `h` across all samples/timesteps/spatial points
 - `mean_delta`, `std_delta`, `rms_delta` of temporal differences `h(t+1) - h(t)`
 
+Computed values from the current training split:
+```yaml
+mean:  {h: 1.0327}
+std:   {h: 0.1141}
+rms:   {h: 1.0388}
+mean_delta:  {h: -2.2266e-12}   # ≈ 0 — no drift bias
+std_delta:   {h: 7.8778e-03}
+rms_delta:   {h: 7.8778e-03}
+```
+The near-zero `mean_delta` confirms the field is approximately conservative over time. The small `std_delta` (~0.8% of the field std) indicates slow temporal dynamics.
+
 ## Additional Files Created
 
 ### `the_well/data/utils.py`
@@ -151,10 +162,13 @@ Hydra data config for training:
 ```yaml
 _target_: the_well.data.WellDataModule
 batch_size: 32
-well_base_path: ${server.well_base_path}
+well_base_path: /mnt/gpuxl/polymathic/the_well/datasets/
 well_dataset_name: pdebench_swe
 use_normalization: True
+min_dt_stride: 1
+max_dt_stride: 1
 ```
+Note: `well_base_path` is currently hardcoded for the gpuxl server. Override via `data.well_base_path=...` or the `server` config when running locally.
 
 ## Verification
 

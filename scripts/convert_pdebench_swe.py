@@ -132,7 +132,10 @@ def convert_split(src: h5py.File, meta: dict, split: str, start: int, end: int,
             "h",
             shape=(n_traj, n_steps, nx, ny),
             dtype=np.float32,
-            chunks=(1, n_steps, nx, ny),   # one chunk per trajectory for fast access
+            # No chunking — contiguous layout matches The Well's own datasets (e.g. TRL2D).
+            # HDF5 seeks to the exact byte offset for any timestep window, so DataLoader
+            # workers read only the ~325 KB they actually need (5 steps × 65 KB) rather
+            # than the full 6.7 MB that a (1, 101, H, W) chunk would force.
         )
         ds_h.attrs["sample_varying"] = True
         ds_h.attrs["time_varying"] = True
@@ -299,6 +302,7 @@ def split_file(src_path: Path, n_splits: int):
                     grp_path = "/".join(name.split("/")[:-1])
                     if grp_path and grp_path not in dst:
                         dst.require_group(grp_path)
+                    # Preserve source chunk layout (None = contiguous, matching TRL2D style)
                     src_chunks = ds.chunks
                     chunks = (min(1, data.shape[0]),) + src_chunks[1:] if src_chunks else None
                     new_ds = dst.create_dataset(name, data=data, chunks=chunks)
