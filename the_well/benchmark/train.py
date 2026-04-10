@@ -189,7 +189,7 @@ def main(cfg: DictConfig):
         project=cfg.wandb_project_name,
         group=experiment_name,
         config=wandb_logged_cfg,
-        name=f"{experiment_name}-seed{cfg.seed}",
+        name=f"{cfg.run_name}-{cfg.model._target_.split('.')[-1]}-seed{cfg.seed}" if cfg.run_name else f"{experiment_name}-seed{cfg.seed}",
         resume=True,
     )
 
