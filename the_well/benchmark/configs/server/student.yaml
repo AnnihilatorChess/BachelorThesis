@@ -6,7 +6,4 @@
 data:
   well_base_path: "../../datasets/"
 experiment_dir: "experiments/"
-# 3 workers per experiment: 3 concurrent runs × 3 workers = 9 total,
-# leaving headroom for main processes and GPU driver threads on a 10-core CPU.
-# 9 workers (the base default) causes severe CPU oversubscription → GPU stalls.
-data_workers: 3
+data_workers: 2
