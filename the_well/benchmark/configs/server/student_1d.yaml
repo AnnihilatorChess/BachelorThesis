@@ -1,6 +1,8 @@
 # Server config for 1D datasets on the student server
 # Increases data workers to prevent I/O bottlenecks with large datasets like 1D Burgers
-well_base_path: ../../datasets/
+data:
+  well_base_path: "../../datasets/"
+experiment_dir: "experiments/"
 data_workers: 8
 accelerator: "gpu"
 devices: 1
