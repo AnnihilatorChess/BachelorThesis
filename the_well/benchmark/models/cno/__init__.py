@@ -27,7 +27,7 @@ def _get_bn(n_spatial_dims):
 def _interpolate(x, size, n_spatial_dims):
     """Resolution-invariant interpolation using F.interpolate."""
     mode = {1: "linear", 2: "bicubic", 3: "trilinear"}[n_spatial_dims]
-    return F.interpolate(x, size=size, mode=mode, antialias=True)
+    return F.interpolate(x, size=tuple(int(s) for s in size), mode=mode, antialias=True)
 
 
 class CNOActivation(nn.Module):

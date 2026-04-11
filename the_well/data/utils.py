@@ -28,13 +28,14 @@ WELL_DATASETS = [
     "turbulent_radiative_layer_3D",
     "viscoelastic_instability",
     "pdebench_swe",
+    "pdebench_1d_burgers",
 ]
 
 
 IO_PARAMS = {
     "fsspec_params": {
         # "skip_instance_cache": True
-        "cache_type": "blockcache",  # or "first" with enough space
+        "cache_type": "mmap",  # Use memory-mapping for efficient parallel reads
         "block_size": 8 * 1024 * 1024,  # could be bigger
     },
     "h5py_params": {
