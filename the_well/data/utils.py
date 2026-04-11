@@ -28,6 +28,7 @@ WELL_DATASETS = [
     "turbulent_radiative_layer_3D",
     "viscoelastic_instability",
     "pdebench_swe",
+    "pdebench_1d_burgers",
 ]
 
 
