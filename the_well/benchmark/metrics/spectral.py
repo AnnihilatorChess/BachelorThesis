@@ -20,7 +20,10 @@ def fftn(x: torch.Tensor, meta: WellMetadata) -> torch.Tensor:
         N-dimensional FFT of x.
     """
     spatial_dims = tuple(range(-meta.n_spatial_dims - 1, -1))
-    return torch.fft.fftn(x, dim=spatial_dims)
+    if x.is_cuda:
+        with torch.cuda.device(x.device):
+            return torch.fft.fftn(x.contiguous(), dim=spatial_dims)
+    return torch.fft.fftn(x.contiguous(), dim=spatial_dims)
 
 
 def ifftn(x: torch.Tensor, meta: WellMetadata) -> torch.Tensor:
@@ -35,7 +38,10 @@ def ifftn(x: torch.Tensor, meta: WellMetadata) -> torch.Tensor:
         N-dimensional inverse FFT of x.
     """
     spatial_dims = tuple(range(-meta.n_spatial_dims - 1, -1))
-    return torch.fft.ifftn(x, dim=spatial_dims)
+    if x.is_cuda:
+        with torch.cuda.device(x.device):
+            return torch.fft.ifftn(x.contiguous(), dim=spatial_dims)
+    return torch.fft.ifftn(x.contiguous(), dim=spatial_dims)
 
 
 def power_spectrum(

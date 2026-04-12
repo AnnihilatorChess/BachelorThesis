@@ -93,7 +93,9 @@ def build_1d_power_spectrum(x, spatial_dims):
     x_fft = torch.fft.fftn(x, dim=spatial_dims, norm="ortho").abs().square()
     # Return the shifted sqrt power spectrum
     # First average over spatial dims, then take the last time step from the first batch element
-    return torch.fft.fftshift(x_fft.mean(spatial_dims[1:])[0, -1].sqrt())
+    if len(spatial_dims) > 1:
+        x_fft = x_fft.mean(spatial_dims[1:])
+    return torch.fft.fftshift(x_fft[0, -1].sqrt())
 
 
 def plot_power_spectrum_by_field(
