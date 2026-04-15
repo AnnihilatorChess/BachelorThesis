@@ -31,7 +31,6 @@ from pathlib import Path
 # Configuration
 # ──────────────────────────────────────────────────────────────────────
 SOURCE_FILES = [
-    (Path("datasets/PDEBench/1D_Burgers/1D_Burgers_Sols_Nu0.01.hdf5"), 0.01),
     (Path("datasets/PDEBench/1D_Burgers/1D_Burgers_Sols_Nu0.001.hdf5"), 0.001),
 ]
 OUTPUT_BASE = Path("datasets/pdebench_1d_burgers")
@@ -39,9 +38,9 @@ DATASET_NAME = "pdebench_1d_burgers"
 
 # Train / valid / test split per file (10000 total samples per file)
 SPLIT_RANGES = {
-    "train": (0, 8000),      # 8000 samples per parameter -> 16000 total
-    "valid": (8000, 9000),   # 1000 samples per parameter -> 2000 total
-    "test":  (9000, 10000),  # 1000 samples per parameter -> 2000 total
+    "train": (0, 8000),      # 8000 samples total
+    "valid": (8000, 9000),   # 1000 samples total
+    "test":  (9000, 10000),  # 1000 samples total
 }
 
 
