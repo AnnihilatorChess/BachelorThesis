@@ -98,6 +98,9 @@ def convert_split(split: str, start: int, end: int, output_base: Path, repo_root
             "u",
             shape=(n_traj, n_steps, nx),
             dtype=np.float32,
+            # No chunking — contiguous layout matches The Well's own datasets.
+            # HDF5 seeks to the exact byte offset for any timestep window, so DataLoader
+            # workers read only what they actually need rather than the full trajectory.
         )
         ds_u.attrs["sample_varying"] = True
         ds_u.attrs["time_varying"] = True
