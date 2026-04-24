@@ -23,22 +23,17 @@ plt.rcParams.update({
 # -- FNO
 # baseline validation run FNO
 baseline_fno_full_rollout = np.load(r"turbulent_radiative_layer_2D-fno-FNO-0.001\13\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0\full_VRMSE_rollout.npy")
-best_fno_full_rollout = np.load(r"turbulent_radiative_layer_2D-fno_film-FNOFiLM-0.001\14\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0\full_VRMSE_rollout.npy")
+best_fno_full_rollout = baseline_fno_full_rollout
 
 # - UNET Convnext
 # baseline validation run Convnext
 baseline_conv_next_full_rollout = np.load(r"turbulent_radiative_layer_2D-unet_convnext-UNetConvNext-0.001\8\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0\full_VRMSE_rollout.npy")
-best_unet_convnext_full_rollout = np.load(r"turbulent_radiative_layer_2D-unet_convnext_film-UNetConvNextFiLM-0.001\7\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0\full_VRMSE_rollout.npy")
+best_unet_convnext_full_rollout = baseline_conv_next_full_rollout
 
 # -- UNET CLASSIC
 # baseline validation run Unet classic
 baseline_unet_classic_full_rollout = np.load(r"turbulent_radiative_layer_2D-unet_classic-UNetClassic-0.001\5\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0\full_VRMSE_rollout.npy")
-# validate FiLM t_cool push classic
-best_unet_classic_full_rollout = np.load(r"turbulent_radiative_layer_2D-unet_classic_film-UNetClassicFiLM-0.001\13\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0\full_VRMSE_rollout.npy")
-
-
-
-# cond_t_cool_push_fno_full_rollout = np.load(r"turbulent_radiative_layer_2D-fno-FNO-0.001\10\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_1100\full_RMSE_rollout.npy")
+best_unet_classic_full_rollout = baseline_unet_classic_full_rollout
 
 if False:
     print(f"FNO mean: {best_fno_full_rollout.mean()}")
@@ -121,12 +116,10 @@ if False:
     print(f"Baseline FNO mean: {baseline_fno_full_rollout.mean()}")
     print(f"Baseline ConvNeXt mean: {baseline_conv_next_full_rollout.mean()}")
     print(f"Baseline Unet Classic mean: {baseline_unet_classic_full_rollout.mean()}")
-    #print(cond_t_cool_push_fno_full_rollout.mean())
 
     plot_rollout_losses(baseline_fno_full_rollout, title="Baseline FNO Rollout Loss")
     plot_rollout_losses(baseline_conv_next_full_rollout, title="Baseline Convnext Rollout Loss")
     plot_rollout_losses(baseline_unet_classic_full_rollout, title="Baseline Unet Classic Rollout Loss")
-#plot_rollout_losses(cond_t_cool_push_fno_full_rollout, title="Cond t_cool Push FNO Rollout Loss")
 
 
 
@@ -277,9 +270,9 @@ def plot_rollout_mean_vrmse(model_paths_map):
 if True:
 
     paths = {
-        "Best FNO": r"turbulent_radiative_layer_2D-fno_film-FNOFiLM-0.001\14\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0\full_VRMSE_rollout.npy",
-        "Best U-Net_Classic": r"turbulent_radiative_layer_2D-unet_classic_film-UNetClassicFiLM-0.001\13\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0\full_VRMSE_rollout.npy",
-        "Best U-Net_ConvNeXt": r"turbulent_radiative_layer_2D-unet_convnext_film-UNetConvNextFiLM-0.001\7\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0\full_VRMSE_rollout.npy",
+        "Baseline FNO": r"turbulent_radiative_layer_2D-fno-FNO-0.001\13\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0\full_VRMSE_rollout.npy",
+        "Baseline U-Net_Classic": r"turbulent_radiative_layer_2D-unet_classic-UNetClassic-0.001\5\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0\full_VRMSE_rollout.npy",
+        "Baseline U-Net_ConvNeXt": r"turbulent_radiative_layer_2D-unet_convnext-UNetConvNext-0.001\8\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0\full_VRMSE_rollout.npy",
 
     }
 
@@ -404,9 +397,9 @@ def plot_spectral_rollouts(model_paths_map):
 
 if False:
     paths = {
-        "FNO IC-push": r"turbulent_radiative_layer_2D-fno_film-FNOFiLM-0.001\14\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
-        "U-Net_Classic FiLM-push": r"turbulent_radiative_layer_2D-unet_classic_film-UNetClassicFiLM-0.001\13\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
-        "U-Net_ConvNeXt IC-push": r"turbulent_radiative_layer_2D-unet_convnext_film-UNetConvNextFiLM-0.001\7\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
+        "Baseline FNO": r"turbulent_radiative_layer_2D-fno-FNO-0.001\13\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
+        "Baseline U-Net_Classic": r"turbulent_radiative_layer_2D-unet_classic-UNetClassic-0.001\5\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
+        "Baseline U-Net_ConvNeXt": r"turbulent_radiative_layer_2D-unet_convnext-UNetConvNext-0.001\8\viz\turbulent_radiative_layer_2D\rollout_losses\epoch_0",
 
     }
     plot_spectral_rollouts(paths)

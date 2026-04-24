@@ -2,7 +2,6 @@ import numpy as np
 import torch
 
 from the_well.benchmark.metrics.common import Metric
-from the_well.benchmark.metrics.spectral import fftn, ifftn
 from the_well.data.datasets import WellMetadata
 
 
@@ -236,50 +235,34 @@ class LInfinity(Metric):
         ).values
 
 
-class SobolevH1(Metric):
-    """Sobolev H1 semi-norm error: sqrt(MSE + ||grad(pred - ref)||^2).
+class cRMSE(Metric):
+    """Conservation-error RMSE (PDEBench).
 
-    Penalizes high-frequency and gradient errors that pixel-space MSE misses.
-    Uses FFT-based gradients: d/dx_i f = ifftn(i * k_i * fftn(f)).
+    Measures deviation from conserved physical quantities by comparing the
+    spatially-integrated field between prediction and target. Matches PDEBench's
+    `err_CSV` (Takamoto et al., NeurIPS 2022, metrics.py:199-217).
 
-    Returns:
-        [T, C] tensor of H1 error per timestep and field.
+    Definition:
+        cRMSE = sqrt( mean_spatial( (pred - target)^2 ) ), computed on the
+        spatial-mean residual:
+            resid(t, c) = mean_spatial(pred) - mean_spatial(target)
+            cRMSE(t, c) = |resid(t, c)|
+
+    PDEBench computes this by summing over space and dividing by N_spatial at
+    the end, which is algebraically equivalent to taking a spatial mean first.
     """
 
     @staticmethod
     def eval(
-        x: torch.Tensor,
-        y: torch.Tensor,
+        x: torch.Tensor | np.ndarray,
+        y: torch.Tensor | np.ndarray,
         meta: WellMetadata,
     ) -> torch.Tensor:
         spatial_dims = tuple(range(-meta.n_spatial_dims - 1, -1))
-        spatial_shape = tuple(x.shape[dim] for dim in spatial_dims)
-        ndim = len(spatial_dims)
+        # Mean over spatial dims -> (..., T, C); abs residual equals
+        # sqrt((sum/N - sum/N)^2) which matches PDEBench after their /N normalization.
+        return torch.abs(
+            torch.mean(x, dim=spatial_dims) - torch.mean(y, dim=spatial_dims)
+        )
 
-        # L2 error component
-        l2_mse = MSE.eval(x, y, meta)  # [T, C]
 
-        # Gradient error via FFT
-        error = x - y
-        error_fft = fftn(error, meta)  # FFT of error field
-
-        grad_mse = torch.zeros_like(l2_mse)
-        for d in range(ndim):
-            N = spatial_shape[d]
-            # Wavenumber vector for dimension d
-            k = 2 * np.pi * torch.fft.fftfreq(N, device=x.device)
-            # Reshape for broadcasting: insert size-1 dims for other spatial dims
-            shape = [1] * error_fft.ndim
-            shape[spatial_dims[d]] = N
-            k = k.reshape(shape)
-
-            # Spectral derivative: multiply by i*k
-            grad_fft = 1j * k * error_fft
-            grad_real = ifftn(grad_fft, meta).real
-
-            # MSE of gradient component, averaged over spatial dims
-            n_spatial = tuple(range(-meta.n_spatial_dims - 1, -1))
-            grad_mse = grad_mse + torch.mean(grad_real**2, dim=n_spatial)
-
-        # H1 = sqrt(L2_MSE + gradient_MSE)
-        return torch.sqrt(l2_mse + grad_mse)

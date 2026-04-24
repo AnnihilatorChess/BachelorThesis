@@ -17,8 +17,6 @@ checkpoint_path: "" # This is a default that is overridden by the code
 pushforward: False
 pushforward_final_probs: [0.4, 0.2, 0.2, 0.2]
 pushforward_warmup_epochs: 20
-# FiLM configs
-film: False # other FiLM params are in the model config
 # Noise injection configs
 noise_injection: False
 noise_std: 0.01
@@ -29,9 +27,8 @@ temporal_bundle_size: 1 # 1 = standard single-step, K > 1 = predict K timesteps 
 extended_metrics: True
 valid_rollout_threshold: 0.2 # nRMSE threshold for valid rollout length
 correlation_time_threshold: 0.8 # PearsonR threshold for correlation time
-hf_energy_cutoff_fraction: 0.5 # fraction of k_nyquist for high-freq boundary
 # Temporal loss interval boundaries.
 # null = equal-width bins based on num_time_intervals (dataset-agnostic, safe default).
 # Explicit list of integers = fixed boundaries, e.g. [0, 6, 12, 13, 30] for The Well paper.
 # NOTE: fixed boundaries must be set before running benchmarks — they cannot be changed retrospectively.
-temporal_loss_boundaries: null
+temporal_loss_boundaries: [0, 6, 12, 13, 30]

@@ -1,0 +1,28 @@
+# @package _global_
+# PDEBench-protocol experiment for U-Net Classic.
+# See docs/benchmark-comparability.md for the full protocol comparison.
+#
+# Pushforward caveat: PDEBench uses a fixed unroll depth of 20 while our
+# trainer uses a curriculum over depths 0-3 (via pushforward_final_probs).
+# Turning pushforward=True here gives the ours-style curriculum, which is a
+# different algorithm than PDEBench's -- flagged in the comparability doc.
+
+defaults:
+  - /data: pdebench_swe
+  - /model: unet_classic_pdebench
+  - /lr_scheduler: step_lr
+  - override /optimizer: adam_pdebench
+  - _self_
+
+trainer:
+  loss_fn:
+    _target_: the_well.benchmark.metrics.MSE
+  formatter: channels_first_default
+  epochs: 500
+  rollout_val_frequency: 10
+  pushforward: True
+
+data:
+  n_steps_input: 10
+
+name: unet_classic_pdebench

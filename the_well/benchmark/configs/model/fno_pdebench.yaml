@@ -1,0 +1,4 @@
+_target_: the_well.benchmark.models.FNO
+modes1: 12
+modes2: 12
+hidden_channels: 20

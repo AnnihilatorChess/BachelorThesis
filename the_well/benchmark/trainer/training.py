@@ -18,9 +18,6 @@ from the_well.benchmark.metrics import (
     validation_plots,
     CorrelationTime,
     ErrorGrowthRate,
-    HighFreqEnergyRatio,
-    NRMSEAreaUnderCurve,
-    SobolevH1,
     ValidRolloutLength,
 )
 from the_well.data.data_formatter import (
@@ -32,6 +29,17 @@ from the_well.data.datasets import DeltaWellDataset
 from the_well.data.utils import flatten_field_names
 
 logger = logging.getLogger(__name__)
+
+
+# Checkpoints saved during training, keyed by the validation metric that selected them.
+# - one_step_*: tracked on short validation (every val_frequency epochs)
+# - rollout_*:  tracked on rollout validation (every rollout_val_frequency epochs)
+CHECKPOINT_METRICS = {
+    "one_step_vrmse": "best_one_step_vrmse.pt",
+    "one_step_nrmse": "best_one_step_nrmse.pt",
+    "rollout_vrmse": "best_rollout_vrmse.pt",
+    "rollout_nrmse": "best_rollout_nrmse.pt",
+}
 
 
 def param_norm(parameters):
@@ -71,7 +79,6 @@ class Trainer:
         pushforward: bool = False,
         pushforward_warmup_epochs: int = 10,
         pushforward_final_probs: list = (0.4, 0.2, 0.2, 0.2),
-        film: bool = False,
         noise_injection: bool = False,
         noise_std: float = 0.01,
         noise_anneal: bool = False,
@@ -79,7 +86,6 @@ class Trainer:
         extended_metrics: bool = True,
         valid_rollout_threshold: float = 0.2,
         correlation_time_threshold: float = 0.8,
-        hf_energy_cutoff_fraction: float = 0.5,
         temporal_loss_boundaries=None,
     ):
         """
@@ -156,13 +162,12 @@ class Trainer:
             self.device.type, enabled=enable_amp and amp_type != "bfloat16"
         )
         self.is_distributed = is_distributed
-        self.best_val_loss = None
+        self.best_metrics = {k: float("inf") for k in CHECKPOINT_METRICS}
         self.starting_val_loss = float("inf")
         self.dset_metadata = self.datamodule.train_dataset.metadata
         self.pushforward = pushforward
         self.pushforward_warmup_epochs = pushforward_warmup_epochs
         self.pushforward_final_probs = pushforward_final_probs
-        self.film = film
         self.noise_injection = noise_injection
         self.noise_std = noise_std
         self.noise_anneal = noise_anneal
@@ -171,13 +176,8 @@ class Trainer:
         self.n_fields = self.dset_metadata.n_fields
         # Extended evaluation metrics (create fresh instances to avoid mutating module-level singletons)
         if extended_metrics:
-            self.validation_suite += [
-                SobolevH1(),
-                HighFreqEnergyRatio(cutoff_fraction=hf_energy_cutoff_fraction),
-            ]
             self.summary_suite = [
                 ValidRolloutLength(threshold=valid_rollout_threshold),
-                NRMSEAreaUnderCurve(),
                 ErrorGrowthRate(),
                 CorrelationTime(threshold=correlation_time_threshold),
             ]
@@ -195,7 +195,7 @@ class Trainer:
             self.load_checkpoint(checkpoint_path)
 
     def save_model(self, epoch: int, validation_loss: float, output_path: str):
-        """Save the model checkpoint."""
+        """Save a full training-state checkpoint (used for recent.pt / resume)."""
         torch.save(
             {
                 "epoch": epoch,
@@ -203,7 +203,21 @@ class Trainer:
                 "optimizer_state_dit": self.optimizer.state_dict(),
                 "scheduler_state_dict": self.lr_scheduler.state_dict() if self.lr_scheduler else None,
                 "validation_loss": validation_loss,
-                "best_validation_loss": self.best_val_loss,
+                "best_metrics": self.best_metrics,
+            },
+            output_path,
+        )
+
+    def save_best_weights_only(
+        self, epoch: int, metric_name: str, metric_value: float, output_path: str
+    ):
+        """Save model weights plus metadata identifying which metric this checkpoint is best for."""
+        torch.save(
+            {
+                "epoch": epoch,
+                "model_state_dict": self.model.state_dict(),
+                "metric_name": metric_name,
+                "metric_value": metric_value,
             },
             output_path,
         )
@@ -217,24 +231,66 @@ class Trainer:
         # Remove 'model.' or 'module.' prefix if it exists
         new_state_dict = {}
         for k, v in state_dict.items():
-            # This handles the 'model.' prefix seen in your error
             name = k[6:] if k.startswith('model.') else k
-            # Also handle 'module.' just in case
             name = name[7:] if name.startswith('module.') else name
             new_state_dict[name] = v
 
         if self.model is not None:
-            # Use the cleaned state_dict
             self.model.load_state_dict(new_state_dict)
-        if self.optimizer is not None:
+        if self.optimizer is not None and "optimizer_state_dit" in checkpoint:
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dit"])
         if self.lr_scheduler is not None and "scheduler_state_dict" in checkpoint and checkpoint["scheduler_state_dict"] is not None:
             self.lr_scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
-        self.best_val_loss = checkpoint["best_validation_loss"]
-        self.starting_val_loss = checkpoint["validation_loss"]
+        if "best_metrics" in checkpoint and isinstance(checkpoint["best_metrics"], dict):
+            # Merge so any newly added metric keys keep their inf default.
+            for k, v in checkpoint["best_metrics"].items():
+                if k in self.best_metrics:
+                    self.best_metrics[k] = v
+            logger.info(f"Restored best_metrics: {self.best_metrics}")
+        self.starting_val_loss = checkpoint.get("validation_loss", float("inf"))
         self.starting_epoch = (
             checkpoint["epoch"] + 1
         )  # Saves after training loop, so start at next epoch
+
+    def _update_best_checkpoints(
+        self, epoch: int, metrics_dict: dict, scope: str
+    ) -> None:
+        """Save a new best_*.pt for each tracked metric that improved this epoch.
+
+        scope="one_step" looks at keys under the short-validation prefix `valid_`,
+        scope="rollout"  looks at keys under the rollout-validation prefix `rollout_valid_`.
+        Unknown scope is a no-op.
+        """
+        ds = self.dset_metadata.dataset_name
+        if scope == "one_step":
+            candidates = {
+                "one_step_vrmse": f"valid_{ds}/full_VRMSE_T=all",
+                "one_step_nrmse": f"valid_{ds}/full_NRMSE_T=all",
+            }
+        elif scope == "rollout":
+            candidates = {
+                "rollout_vrmse": f"rollout_valid_{ds}/full_VRMSE_T=all",
+                "rollout_nrmse": f"rollout_valid_{ds}/full_NRMSE_T=all",
+            }
+        else:
+            return
+
+        for metric_key, dict_key in candidates.items():
+            if dict_key not in metrics_dict:
+                logger.warning(
+                    f"_update_best_checkpoints: key {dict_key} not found in metrics_dict"
+                )
+                continue
+            value = float(metrics_dict[dict_key])
+            if value < self.best_metrics[metric_key]:
+                self.best_metrics[metric_key] = value
+                out_path = os.path.join(
+                    self.checkpoint_folder, CHECKPOINT_METRICS[metric_key]
+                )
+                self.save_best_weights_only(epoch, metric_key, value, out_path)
+                logger.info(
+                    f"Epoch {epoch}: new best {metric_key} = {value:.6f} -> {CHECKPOINT_METRICS[metric_key]}"
+                )
 
     def _add_noise(self, x, epoch):
         """Add Gaussian noise to input tensor during training for distribution shift robustness."""
@@ -301,19 +357,6 @@ class Trainer:
                 self.device
             )
 
-        # setup params for FiLM
-        t_cool = None
-        current_time = None
-        dt = None
-        if self.film:
-            t_cool = moving_batch["constant_scalars"].to(self.device)
-            t_cool = self.norm_t_cool(t_cool)
-            grid_time = moving_batch["input_time_grid"].to(self.device)
-            dt = (grid_time[:, -1] - grid_time[:, -2]).unsqueeze(1)
-            dt = self.norm_time(dt)
-            current_time = grid_time[:, -1].unsqueeze(1)
-            current_time = self.norm_time(current_time)
-
         K = self.bundle_size
         y_preds = []
         step = 0
@@ -330,11 +373,7 @@ class Trainer:
             if train and self.noise_injection:
                 inputs = [self._add_noise(inputs[0], self._current_epoch)] + list(inputs[1:])
 
-            if self.film:
-                y_pred = model(*inputs, t_cool=t_cool, time=current_time)
-                current_time += dt * K
-            else:
-                y_pred = model(*inputs)
+            y_pred = model(*inputs)
 
             # Unbundle: [B, K*C, H, W] -> [B, K, H, W, C]
             y_pred_bundle = formatter.process_output_unbundle(y_pred, K, self.n_fields)
@@ -526,27 +565,10 @@ class Trainer:
             f"{dset_name}/full_{self.loss_fn.__class__.__name__}_T=all"
         ].item()
         loss_dict = {f"{valid_or_test}_{k}": v.item() for k, v in loss_dict.items()}
-        # Misc metrics
-        loss_dict["param_norm"] = param_norm(self.model.parameters())
+        # Namespace param_norm so repeated validation_loop calls in one step (e.g. per-checkpoint
+        # test eval) don't overwrite each other in the merged wandb log.
+        loss_dict[f"{valid_or_test}_param_norm"] = param_norm(self.model.parameters())
         return validation_loss, loss_dict
-
-    def norm_time(self, t):
-        """Time in turbulent_radiative_layer_2D is in [0, 159.7033]"""
-        return t / torch.tensor(159.7033, device=self.device)
-
-    def norm_t_cool(self, t_cool, log_scale=True):
-        """t_cool is in [0.03, 3.16]"""
-        min_val = torch.tensor(0.03, device=self.device)
-        max_val = torch.tensor(3.16, device=self.device)
-
-        if log_scale:
-            denom = torch.log(max_val) - torch.log(min_val)
-            t_cool = (torch.log(t_cool) - torch.log(min_val)) / denom
-        else:
-            denom = max_val - min_val
-            t_cool = (t_cool - min_val) / denom
-
-        return t_cool
 
     def get_pushforward_probs(self, epoch: int) -> list:
         """Linearly interpolate between starting_probs and final_probs with warmup"""
@@ -567,7 +589,7 @@ class Trainer:
         return current_weights
 
 
-    def predict_next_step(self, input_fields, t_cool=None, t=None, add_noise=False):
+    def predict_next_step(self, input_fields, add_noise=False):
         """Predicts the next step of the model."""
         input_batch = {"input_fields": input_fields, "output_fields": torch.tensor([0.0])}
 
@@ -578,15 +600,12 @@ class Trainer:
         if add_noise and self.noise_injection:
             inputs = (self._add_noise(inputs[0], self._current_epoch),) + inputs[1:]
 
-        if self.film:
-            y_pred = self.model(*inputs, t_cool=t_cool, time=t)
-        else:
-            y_pred = self.model(*inputs)
+        y_pred = self.model(*inputs)
         y_pred = self.formatter.process_output_channel_last(y_pred)
         y_pred = self.formatter.process_output_expand_time(y_pred)
         return y_pred  # shape: [B, 1, H, W, C]
 
-    def predict_next_bundle(self, input_fields, t_cool=None, t=None, add_noise=False):
+    def predict_next_bundle(self, input_fields, add_noise=False):
         """Predicts the next K steps (temporal bundle) of the model."""
         input_batch = {"input_fields": input_fields, "output_fields": torch.tensor([0.0])}
         inputs, _ = self.formatter.process_input(input_batch)
@@ -594,10 +613,7 @@ class Trainer:
         if add_noise and self.noise_injection:
             inputs = (self._add_noise(inputs[0], self._current_epoch),) + inputs[1:]
 
-        if self.film:
-            y_pred = self.model(*inputs, t_cool=t_cool, time=t)
-        else:
-            y_pred = self.model(*inputs)
+        y_pred = self.model(*inputs)
 
         # [B, K*C, H, W] -> [B, K, H, W, C]
         return self.formatter.process_output_unbundle(y_pred, self.bundle_size, self.n_fields)
@@ -626,31 +642,16 @@ class Trainer:
 
             current_input_fields = batch["input_fields"].to(self.device)
 
-            # setup moving values for FiLM
-            t_cool = None
-            current_time = None
-            dt = None
-            if self.film:
-                t_cool = batch["constant_scalars"].to(self.device)
-                t_cool = self.norm_t_cool(t_cool)
-                grid_time = batch["input_time_grid"].to(self.device)
-                dt = (grid_time[:, -1] - grid_time[:, -2]).unsqueeze(1)
-                dt = self.norm_time(dt)
-                current_time = grid_time[:, -1].unsqueeze(1)
-                current_time = self.norm_time(current_time)
-
             if K == 1:
                 # Original single-step pushforward (backward compatible)
                 y_true = y_true_all[:, pushforward_steps].to(self.device)
 
                 with torch.no_grad():
                     for s in range(pushforward_steps):
-                        y_pred = self.predict_next_step(current_input_fields, t_cool, current_time)
+                        y_pred = self.predict_next_step(current_input_fields)
                         current_input_fields = torch.cat([current_input_fields[:, 1:], y_pred], dim=1)
-                        if self.film:
-                            current_time += dt
 
-                y_last = self.predict_next_step(current_input_fields, t_cool, current_time, add_noise=True)
+                y_last = self.predict_next_step(current_input_fields, add_noise=True)
                 loss = self.loss_fn(y_last, y_true.unsqueeze(1), self.dset_metadata).mean()
             else:
                 # Bundle-level pushforward: each pushforward step advances K timesteps
@@ -658,12 +659,10 @@ class Trainer:
 
                 with torch.no_grad():
                     for s in range(pushforward_steps):
-                        y_pred_bundle = self.predict_next_bundle(current_input_fields, t_cool, current_time)
+                        y_pred_bundle = self.predict_next_bundle(current_input_fields)
                         current_input_fields = torch.cat([current_input_fields[:, K:], y_pred_bundle], dim=1)
-                        if self.film:
-                            current_time += dt * K
 
-                y_last_bundle = self.predict_next_bundle(current_input_fields, t_cool, current_time, add_noise=True)
+                y_last_bundle = self.predict_next_bundle(current_input_fields, add_noise=True)
                 loss = self.loss_fn(y_last_bundle, y_true, self.dset_metadata).mean()
 
             self.grad_scaler.scale(loss).backward()
@@ -775,12 +774,7 @@ class Trainer:
                 val_loss_dict |= {"valid": val_loss, "epoch": epoch}
                 wandb.log(val_loss_dict, step=epoch)
 
-                val_vrmse = val_loss_dict[f"valid_{self.dset_metadata.dataset_name}/full_VRMSE_T=all"]
-                if self.best_val_loss is None or val_vrmse < self.best_val_loss:
-                    self.save_model(
-                        epoch, val_loss, os.path.join(self.checkpoint_folder, "best.pt")
-                    )
-                    self.best_val_loss = val_vrmse
+                self._update_best_checkpoints(epoch, val_loss_dict, scope="one_step")
             # Check if time for expensive validation - periodic or final
             if epoch % self.rollout_val_frequency == 0 or (epoch == self.max_epoch):
                 logger.info(
@@ -801,72 +795,122 @@ class Trainer:
                 }
                 wandb.log(rollout_val_loss_dict, step=epoch)
 
-        # load best VRMSE model
-        checkpoint = torch.load(os.path.join(self.checkpoint_folder, "best.pt"), map_location=self.device)
-        self.model.load_state_dict(checkpoint["model_state_dict"])
+                self._update_best_checkpoints(
+                    epoch, rollout_val_loss_dict, scope="rollout"
+                )
 
-        test_loss, test_logs = self.validation_loop(
-            test_dataloader,
-            valid_or_test="test",
-            full=True,
-            epoch=epoch + 1000,  # Just use this to flag test
-        )
-        rollout_test_loss, rollout_test_logs = self.validation_loop(
-            rollout_test_dataloader,
-            valid_or_test="rollout_test",
-            full=True,
-            epoch=epoch + 1000,  # Just use this to flag test
-        )
-        test_logs |= rollout_test_logs
-        logger.info(f"Test loss {test_loss}")
-        test_logs |= {
-            "test": test_loss,
-            "rollout_test": rollout_test_loss,
-            "epoch": epoch,
-        }
-        wandb.log(test_logs, step=epoch)
+        self._run_final_test_eval(test_dataloader, rollout_test_dataloader, epoch)
+
+    def _run_final_test_eval(
+        self,
+        test_dataloader: DataLoader,
+        rollout_test_dataloader: DataLoader,
+        epoch: int,
+    ) -> None:
+        """Evaluate every saved best_*.pt on test + rollout_test splits.
+
+        Each checkpoint gets a distinct wandb key prefix (e.g. `test_best_rollout_nrmse_*`)
+        so all per-checkpoint numbers coexist in a single run. Headline scores are copied
+        to `wandb.run.summary` for dashboard filtering.
+        """
+        combined_test_logs = {}
+        headline = {}
+        test_step = epoch + 1000
+        ds = self.dset_metadata.dataset_name
+
+        for metric_key, ckpt_filename in CHECKPOINT_METRICS.items():
+            ckpt_path = os.path.join(self.checkpoint_folder, ckpt_filename)
+            if not os.path.exists(ckpt_path):
+                logger.warning(
+                    f"Skipping test eval for {metric_key}: {ckpt_filename} not found"
+                )
+                continue
+            logger.info(f"Running test evaluation for best_{metric_key}")
+            ckpt = torch.load(ckpt_path, map_location=self.device, weights_only=False)
+            self.model.load_state_dict(ckpt["model_state_dict"])
+
+            test_prefix = f"test_best_{metric_key}"
+            rollout_test_prefix = f"rollout_test_best_{metric_key}"
+
+            test_loss, test_logs = self.validation_loop(
+                test_dataloader,
+                valid_or_test=test_prefix,
+                full=True,
+                epoch=test_step,
+            )
+            rollout_test_loss, rollout_test_logs = self.validation_loop(
+                rollout_test_dataloader,
+                valid_or_test=rollout_test_prefix,
+                full=True,
+                epoch=test_step,
+            )
+
+            combined_test_logs |= test_logs | rollout_test_logs
+            combined_test_logs[f"{test_prefix}_loss"] = test_loss
+            combined_test_logs[f"{rollout_test_prefix}_loss"] = rollout_test_loss
+            logger.info(
+                f"best_{metric_key}: test_loss={test_loss:.6f}, "
+                f"rollout_test_loss={rollout_test_loss:.6f} "
+                f"(selected epoch={ckpt.get('epoch', -1)}, "
+                f"metric_value={ckpt.get('metric_value', float('nan'))})"
+            )
+
+            # Per-checkpoint run-level metadata — goes to wandb.run.summary, not as a time series
+            # (otherwise each key creates its own near-empty chart panel).
+            headline[f"summary/{metric_key}__selected_epoch"] = ckpt.get("epoch", -1)
+            headline[f"summary/{metric_key}__selected_metric_value"] = ckpt.get(
+                "metric_value", float("nan")
+            )
+            headline[f"summary/{metric_key}__test_vrmse"] = test_logs.get(
+                f"{test_prefix}_{ds}/full_VRMSE_T=all"
+            )
+            headline[f"summary/{metric_key}__test_nrmse"] = test_logs.get(
+                f"{test_prefix}_{ds}/full_NRMSE_T=all"
+            )
+            headline[f"summary/{metric_key}__rollout_test_vrmse"] = rollout_test_logs.get(
+                f"{rollout_test_prefix}_{ds}/full_VRMSE_T=all"
+            )
+            headline[f"summary/{metric_key}__rollout_test_nrmse"] = rollout_test_logs.get(
+                f"{rollout_test_prefix}_{ds}/full_NRMSE_T=all"
+            )
+
+        if not combined_test_logs:
+            logger.warning("No best checkpoints found; skipping final test evaluation.")
+            return
+
+        combined_test_logs["epoch"] = test_step
+        wandb.log(combined_test_logs, step=test_step)
+
+        if wandb.run is not None:
+            for k, v in headline.items():
+                if v is not None:
+                    wandb.run.summary[k] = v
 
     def validate(self):
         """Runs only validation passes - does not save checkpoints or perform training.
 
-        This can probably be refactored to be merged with train, but the flow is already
-        convoluted enough that I'm splitting it for now.
+        Val/rollout-val are run once on the currently-loaded model weights.
+        Test/rollout-test are run once per saved best_*.pt checkpoint.
         """
         val_dataloder = self.datamodule.val_dataloader()
         rollout_val_dataloader = self.datamodule.rollout_val_dataloader()
         test_dataloader = self.datamodule.test_dataloader()
         rollout_test_dataloader = self.datamodule.rollout_test_dataloader()
         epoch = self.max_epoch + 1
-        # Regular val
+        # Regular val (current weights)
         val_loss, val_loss_dict = self.validation_loop(val_dataloder, full=True)
         logger.info(f"Post-run: validation loss {val_loss}")
-        val_loss_dict |= {"valid": val_loss, "epoch": self.max_epoch + 1}
+        val_loss_dict |= {"valid": val_loss, "epoch": epoch}
         wandb.log(val_loss_dict, step=epoch)
-        # Rollout val
+        # Rollout val (current weights)
         rollout_val_loss, rollout_val_loss_dict = self.validation_loop(
             rollout_val_dataloader, valid_or_test="rollout_valid", full=True
         )
         logger.info(f"Post run: rollout validation loss {rollout_val_loss}")
         rollout_val_loss_dict |= {
             "rollout_valid": rollout_val_loss,
-            "epoch": self.max_epoch + 1,
+            "epoch": epoch,
         }
         wandb.log(rollout_val_loss_dict, step=epoch)
-        # Regular test
-        test_loss, test_logs = self.validation_loop(
-            test_dataloader, valid_or_test="test", full=True
-        )
-        logger.info(f"Post run: test loss {test_loss}")
-        # Rollout test
-        rollout_test_loss, rollout_test_logs = self.validation_loop(
-            rollout_test_dataloader, valid_or_test="rollout_test", full=True
-        )
-        test_logs |= rollout_test_logs
-        logger.info(f"Post run: rollout test loss {rollout_test_loss}")
 
-        test_logs |= {
-            "test": test_loss,
-            "rollout_test": rollout_test_loss,
-            "epoch": self.max_epoch + 1,
-        }
-        wandb.log(test_logs, step=epoch)
+        self._run_final_test_eval(test_dataloader, rollout_test_dataloader, epoch - 1)

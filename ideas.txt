@@ -15,9 +15,6 @@ Configs changed:
 
     added boolean pushforward and accompanying params to trainer/defaults.yml
     added n_steps_output_train: int --> this is for the pushforward trick, so that val is still with 1 step prediction
-    added boolean film
-    other film params are in the model configs for the film models
-    added experiment and model config files for the FiLM models
 
 Code changed:
     training.py:
@@ -28,14 +25,9 @@ Code changed:
         added train_one_epoch_pushforward:
             method to train one epoch using the pushforward trick, probabilistic assignment of pushforward steps
             helper functions: get_pushforward_probs, predict_next_step
-        added FiLM:
-            updated rollout_model, predict_next_step, train_one_epoch_pushforward for FiLM
-            helper function norm_t, norm_t_cool
     train.py:
         matplotlib.use('agg') fix for thread not in main loop error
         added if statement to set n_steps_out_train=4 if pushforward=True
-        augment input channels by 2 for time and t_cool for FiLM naive
-        check if film=true, instantiate film model
     datamodule.py:
         added a parameter for n_steps_output_train, this is set to 4 if pushforward=True, the reason for this is
         that the val and test loaders should still only yield 1 output for comparability reasons
@@ -43,16 +35,6 @@ Code changed:
         actually using the fno blocks
     models/tfno.py
         actually using the fno blocks
-    models/common.py
-        here are the encoding, embedding and FNO_layer functions used in the FiLM models
-
-    New architectures:
-    models/fno_film/__init__.py:
-        FNO with FiLM modification.
-    models/unet_classic_film/__init__.py:
-        unet with FiLM modification.
-     models/unet_convnext_film/__init__.py:
-         unet_convnext with FiLM modification.
 
 
 Pushforward Trick:
@@ -63,14 +45,10 @@ Pushforward Trick:
     - this implies that the last 3 steps will almost never be predicted --> might be a problem
 
 
-FiLM (Feature wise Linear Modulation):
-    - use for time and t_cool param
-    - create FiLM blocks or give t and t_cool as extra input
-
 Dataloader (turbulent_radiative_layer_2D) returns a batch(dict) with:
     input_fields: (B, t, H, W, C)
     output_fields: (B, t, H, W, C)
-    constant_scalars: (B, 1) (here is the t_cool value)
+    constant_scalars: (B, 1)
     boundary_conditions: (B, {2}, {2}),      {} = I dont know what specifies this
     space_grid: (B, H, W, n_spatial_dims),
     input_time_grid: (B, t), float, same per batch

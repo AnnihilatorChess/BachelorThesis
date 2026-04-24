@@ -8,8 +8,12 @@ from the_well.data.datasets import WellMetadata
 class ValidRolloutLength(SummaryMetric):
     """Number of timesteps before per-step nRMSE exceeds a threshold.
 
-    Inspired by McCabe et al. and APEBench. Instead of asking "what is the
-    total error?", this asks "how long does the model remain accurate?"
+    Reports "how long does the model remain accurate?" rather than
+    "what is the total error?". Conceptually the nRMSE-threshold analogue of
+    the correlation-time / prediction-horizon framing in Zhou & Barati
+    Farimani (2024), "Predicting Change, Not States: An Alternate Framework
+    for Neural PDE Surrogates". The exact formulation (threshold=0.2 on
+    nRMSE) is our own. APEBench and MPP do not define this metric.
 
     Returns:
         dict with:
@@ -47,30 +51,6 @@ class ValidRolloutLength(SummaryMetric):
         }
 
 
-class NRMSEAreaUnderCurve(SummaryMetric):
-    """Trapezoidal integral of the nRMSE(t) curve, normalized by trajectory length.
-
-    A single number summarizing total error accumulation over the rollout.
-    Lower values indicate better overall rollout performance.
-
-    Returns:
-        dict with "nrmse_auc": [C]
-    """
-
-    def eval(self, x, y, meta: WellMetadata, **kwargs):
-        nrmse = NRMSE.eval(x, y, meta)  # [T, C] or [B, T, C]
-
-        if nrmse.ndim == 3:
-            nrmse = nrmse.mean(0)  # [T, C]
-
-        T = nrmse.shape[0]
-        # Trapezoidal integration along time, normalized by T
-        # torch.trapezoid integrates along dim, using unit spacing by default
-        auc = torch.trapezoid(nrmse, dim=0) / max(T - 1, 1)  # [C]
-
-        return {"nrmse_auc": auc}
-
-
 class ErrorGrowthRate(SummaryMetric):
     """Exponential error growth rate (Lyapunov-like exponent).
 
@@ -79,6 +59,12 @@ class ErrorGrowthRate(SummaryMetric):
 
     A lower lambda means a more stable autoregressive surrogate.
     This metric is independent of trajectory length.
+
+    Cite Nayak & Goswami (2025), "Data-Efficient Time-Dependent PDE
+    Surrogates: Graph Neural Simulators vs Neural Operators", for the
+    phenomenon of rapid autoregressive error accumulation that this
+    metric formalises. The exponential-fit formulation here is ours; the
+    cited paper does not define the metric itself.
 
     Returns:
         dict with "error_growth_rate": [C]
@@ -125,6 +111,11 @@ class CorrelationTime(SummaryMetric):
     For turbulent systems, pixel-wise matching fails eventually even for
     perfect solvers. This measures how long spatial structure is preserved,
     complementing the nRMSE-based Valid Rollout Length.
+
+    Source: Zhou & Barati Farimani (2024), "Predicting Change, Not States:
+    An Alternate Framework for Neural PDE Surrogates", which defines
+    correlation time as the timestep where Pearson correlation drops below
+    a threshold (e.g. 0.8) — matching our default threshold.
 
     Returns:
         dict with:

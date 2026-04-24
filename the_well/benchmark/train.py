@@ -120,12 +120,23 @@ def train(
     if hasattr(cfg, "lr_scheduler") and not validation_mode:
         # Instantiate LR scheduler
         logger.info(f"Instantiate learning rate scheduler {cfg.lr_scheduler._target_}")
+        # Only pass kwargs the target scheduler accepts -- lets us mix
+        # LinearWarmupCosineAnnealingLR (needs max_epochs/warmup_start_lr/eta_min)
+        # with stock torch schedulers like StepLR that don't.
+        import inspect
+        from hydra.utils import get_class
+        sched_params = inspect.signature(get_class(cfg.lr_scheduler._target_)).parameters
+        extra_kwargs = {}
+        if "max_epochs" in sched_params:
+            extra_kwargs["max_epochs"] = cfg.trainer.epochs
+        if "warmup_start_lr" in sched_params:
+            extra_kwargs["warmup_start_lr"] = cfg.optimizer.lr * 0.1
+        if "eta_min" in sched_params:
+            extra_kwargs["eta_min"] = cfg.optimizer.lr * 0.1
         lr_scheduler: torch.optim.lr_scheduler._LRScheduler = instantiate(
             cfg.lr_scheduler,
             optimizer=optimizer,
-            max_epochs=cfg.trainer.epochs,
-            warmup_start_lr=cfg.optimizer.lr * 0.1,
-            eta_min=cfg.optimizer.lr * 0.1,
+            **extra_kwargs,
         )
     else:
         logger.info("No learning rate scheduler")

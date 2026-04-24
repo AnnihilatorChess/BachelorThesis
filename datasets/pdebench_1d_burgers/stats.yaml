@@ -1,0 +1,12 @@
+mean:
+  u: 0.0
+std:
+  u: 1.0
+rms:
+  u: 1.0
+mean_delta:
+  u: 0.0
+std_delta:
+  u: 1.4142
+rms_delta:
+  u: 1.4142

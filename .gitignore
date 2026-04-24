@@ -29,6 +29,8 @@ datasets/viscoelastic_instability/data/
 2D/neutron_star_disks/
 2D/planetswe/data/
 
+datasets/pdebench_1d_burgers/data/
+datasets/pdebench_swe/data/
 datasets/rayleigh_benard/data/
 datasets/rayleigh_benard_uniform/data/
 datasets/acoustic_scattering_inclusions/old_and_problematic_data/

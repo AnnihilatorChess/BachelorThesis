@@ -1,0 +1,106 @@
+{
+  "w12_persistent_prefetch4": {
+    "config": {
+      "label": "w12_persistent_prefetch4",
+      "batch_size": 1024,
+      "num_workers": 12,
+      "persistent_workers": true,
+      "prefetch_factor": 4,
+      "pin_memory": true
+    },
+    "results": {
+      "epoch1": {
+        "first_batch_s": 7.46714849997079,
+        "steady_s": 12.297195499995723,
+        "n_batches": 50,
+        "per_iter_s": 0.25096317346930047,
+        "samples_per_s": 4080.279930494514
+      },
+      "epoch2": {
+        "first_batch_s": 2.9212231999845244,
+        "steady_s": 11.199633999960497,
+        "n_batches": 50,
+        "per_iter_s": 0.2285639591828673,
+        "samples_per_s": 4480.146404800102
+      }
+    }
+  },
+  "w16_persistent_prefetch4": {
+    "config": {
+      "label": "w16_persistent_prefetch4",
+      "batch_size": 1024,
+      "num_workers": 16,
+      "persistent_workers": true,
+      "prefetch_factor": 4,
+      "pin_memory": true
+    },
+    "results": {
+      "epoch1": {
+        "first_batch_s": 7.743954199948348,
+        "steady_s": 10.76598580001155,
+        "n_batches": 50,
+        "per_iter_s": 0.21971399591860305,
+        "samples_per_s": 4660.604326632697
+      },
+      "epoch2": {
+        "first_batch_s": 3.7978800000273623,
+        "steady_s": 11.007085999997798,
+        "n_batches": 50,
+        "per_iter_s": 0.22463440816322036,
+        "samples_per_s": 4558.518031022019
+      }
+    }
+  },
+  "w16_persistent_prefetch8": {
+    "config": {
+      "label": "w16_persistent_prefetch8",
+      "batch_size": 1024,
+      "num_workers": 16,
+      "persistent_workers": true,
+      "prefetch_factor": 8,
+      "pin_memory": true
+    },
+    "results": {
+      "epoch1": {
+        "first_batch_s": 7.790040599997155,
+        "steady_s": 10.64000929996837,
+        "n_batches": 50,
+        "per_iter_s": 0.21714304693813,
+        "samples_per_s": 4715.7853518181755
+      },
+      "epoch2": {
+        "first_batch_s": 3.3694901000126265,
+        "steady_s": 10.375537600019015,
+        "n_batches": 50,
+        "per_iter_s": 0.2117456653065105,
+        "samples_per_s": 4835.990377974057
+      }
+    }
+  },
+  "w16_persistent_prefetch4_bs512": {
+    "config": {
+      "label": "w16_persistent_prefetch4_bs512",
+      "batch_size": 512,
+      "num_workers": 16,
+      "persistent_workers": true,
+      "prefetch_factor": 4,
+      "pin_memory": true
+    },
+    "results": {
+      "epoch1": {
+        "first_batch_s": 5.470022799971048,
+        "steady_s": 5.847985600004904,
+        "n_batches": 50,
+        "per_iter_s": 0.11934664489805927,
+        "samples_per_s": 4290.024243558151
+      },
+      "epoch2": {
+        "first_batch_s": 1.7618789999978617,
+        "steady_s": 5.129134499991778,
+        "n_batches": 50,
+        "per_iter_s": 0.10467621428554649,
+        "samples_per_s": 4891.273566727527
+      }
+    }
+  }
+}

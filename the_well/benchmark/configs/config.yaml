@@ -1,4 +1,5 @@
 defaults:
+  - _self_  # apply root body first, then group defaults + experiment can override
   - trainer: defaults
   - optimizer: adam
   - experiment: ???
