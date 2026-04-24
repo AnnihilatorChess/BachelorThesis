@@ -12,7 +12,8 @@ venv
 .claude
 Practical_Work_report.pdf
 
-# Agent-specific pointer files (AGENTS.md is the shared source of truth)
+# Agent-specific guidance files (kept locally, not shared via git)
+AGENTS.md
 CLAUDE.md
 GEMINI.md
 
