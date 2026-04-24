@@ -77,11 +77,11 @@ class Trainer:
         amp_type: str = "float16",  # bfloat not supported in FFT
         checkpoint_path: str = "",
         pushforward: bool = False,
-        pushforward_warmup_epochs: int = 10,
+        pushforward_warmup_fraction: float = 0.2,
         pushforward_final_probs: list = (0.4, 0.2, 0.2, 0.2),
         noise_injection: bool = False,
-        noise_std: float = 0.01,
-        noise_anneal: bool = False,
+        noise_std: float = 0.003,
+        noise_anneal: bool = True,
         temporal_bundle_size: int = 1,
         extended_metrics: bool = True,
         valid_rollout_threshold: float = 0.2,
@@ -166,7 +166,9 @@ class Trainer:
         self.starting_val_loss = float("inf")
         self.dset_metadata = self.datamodule.train_dataset.metadata
         self.pushforward = pushforward
-        self.pushforward_warmup_epochs = pushforward_warmup_epochs
+        # warmup expressed as a fraction of total epochs so it scales with budget
+        # (a 32-epoch Rayleigh-Bénard run and a 500-epoch TRL run both get ~20% warmup).
+        self.pushforward_warmup_epochs = max(1, int(epochs * pushforward_warmup_fraction))
         self.pushforward_final_probs = pushforward_final_probs
         self.noise_injection = noise_injection
         self.noise_std = noise_std

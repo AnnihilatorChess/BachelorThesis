@@ -16,11 +16,11 @@ checkpoint_path: "" # This is a default that is overridden by the code
 # pushforward configs
 pushforward: False
 pushforward_final_probs: [0.4, 0.2, 0.2, 0.2]
-pushforward_warmup_epochs: 20
+pushforward_warmup_fraction: 0.2 # fraction of total epochs spent as pure 1-step warmup before pushforward ramps on
 # Noise injection configs
 noise_injection: False
-noise_std: 0.01
-noise_anneal: False # linearly increase from 0 to noise_std over first half of training
+noise_std: 0.003 # in z-score-normalised space; literature values are 1e-4..1e-2 depending on field smoothness
+noise_anneal: True # linearly increase from 0 to noise_std over first half of training
 # Temporal bundling configs
 temporal_bundle_size: 1 # 1 = standard single-step, K > 1 = predict K timesteps at once
 # Extended evaluation metrics
