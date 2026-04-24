@@ -12,6 +12,10 @@ venv
 .claude
 Practical_Work_report.pdf
 
+# Agent-specific pointer files (AGENTS.md is the shared source of truth)
+CLAUDE.md
+GEMINI.md
+
 #Ignoring the data
 datasets/active_matter/data/
 datasets/active_matter_v2/
