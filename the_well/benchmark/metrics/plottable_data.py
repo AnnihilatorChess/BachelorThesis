@@ -128,9 +128,9 @@ def plot_power_spectrum_by_field(
 
     for i in range(x.shape[-1]):
         fig, ax = plt.subplots()
-        np_x_fft = x_fft[..., i].sqrt().cpu().numpy()
-        np_y_ftt = y_fft[..., i].sqrt().cpu().numpy()
-        np_res_ftt = res_fft[..., i].sqrt().cpu().numpy()
+        np_x_fft = x_fft[..., i].cpu().numpy()
+        np_y_ftt = y_fft[..., i].cpu().numpy()
+        np_res_ftt = res_fft[..., i].cpu().numpy()
         title = f"{field_names[i]} averaged 1D power spectrum"
         ax.semilogy(
             axis,

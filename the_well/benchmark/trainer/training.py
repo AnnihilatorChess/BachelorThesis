@@ -546,8 +546,10 @@ class Trainer:
                         key_full = f"{dset_name}/full_{metric_name}"
                         loss_dict[key_full] = loss_dict.get(key_full, 0.0) + values.mean() / denom
                 count += 1
-                if not full and count >= self.short_validation_length:
+                if not full and count >= short_val_len:
                     break
+
+        logger.info(f"Validation loop {valid_or_test} (epoch {epoch}) used {count} batches.")
 
         # Last batch plots - too much work to combine from batches
         for plot_fn in validation_plots:
@@ -737,6 +739,7 @@ class Trainer:
         val_loss = self.starting_val_loss
 
         for epoch in range(self.starting_epoch, self.max_epoch + 1):
+            epoch_logs = {}
             # Distributed samplers need to be set for each epoch
             if self.is_distributed:
                 train_dataloader.sampler.set_epoch(epoch)
@@ -749,8 +752,9 @@ class Trainer:
             logger.info(
                 f"Epoch {epoch}/{self.max_epoch}: avg training loss {train_loss}"
             )
-            train_logs |= {"train": train_loss, "epoch": epoch}
-            wandb.log(train_logs, step=epoch)
+            epoch_logs |= train_logs
+            epoch_logs |= {"train": train_loss, "epoch": epoch}
+
             # Save the most recent iteration
             self.save_model(
                 epoch, val_loss, os.path.join(self.checkpoint_folder, "recent.pt")
@@ -775,7 +779,7 @@ class Trainer:
                     f"Epoch {epoch}/{self.max_epoch}: avg validation loss {val_loss}"
                 )
                 val_loss_dict |= {"valid": val_loss, "epoch": epoch}
-                wandb.log(val_loss_dict, step=epoch)
+                epoch_logs |= val_loss_dict
 
                 self._update_best_checkpoints(epoch, val_loss_dict, scope="one_step")
             # Check if time for expensive validation - periodic or final
@@ -796,11 +800,14 @@ class Trainer:
                     "rollout_valid": rollout_val_loss,
                     "epoch": epoch,
                 }
-                wandb.log(rollout_val_loss_dict, step=epoch)
+                epoch_logs |= rollout_val_loss_dict
 
                 self._update_best_checkpoints(
                     epoch, rollout_val_loss_dict, scope="rollout"
                 )
+
+            # Log everything for the epoch in one go
+            wandb.log(epoch_logs, step=epoch)
 
         self._run_final_test_eval(test_dataloader, rollout_test_dataloader, epoch)
 

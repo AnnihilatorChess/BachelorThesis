@@ -17,6 +17,6 @@ trainer:
 
 data:
   n_steps_input: 10
-  batch_size: 64
+  batch_size: 32
 
 name: cno_pdebench_swe
