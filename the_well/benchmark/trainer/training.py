@@ -67,7 +67,7 @@ class Trainer:
         val_frequency: int,
         rollout_val_frequency: int,
         max_rollout_steps: int,
-        short_validation_length: int,
+        short_validation_length: float,
         make_rollout_videos: bool,
         num_time_intervals: int,
         lr_scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
@@ -492,10 +492,11 @@ class Trainer:
         loss_dict = {}
         time_logs = {}
         count = 0
+        short_val_len = max(1, int(self.short_validation_length * len(dataloader)))
         denom = (
             len(dataloader)
             if full
-            else min(self.short_validation_length, len(dataloader))
+            else min(short_val_len, len(dataloader))
         )
         with torch.autocast(
             self.device.type, enabled=self.enable_amp, dtype=self.amp_type

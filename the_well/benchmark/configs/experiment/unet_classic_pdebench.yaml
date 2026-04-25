@@ -10,7 +10,7 @@
 defaults:
   - /data: pdebench_swe
   - /model: unet_classic_pdebench
-  - /lr_scheduler: step_lr
+  - /lr_scheduler: cosine_with_warmup
   - override /optimizer: adam_pdebench
   - _self_
 
@@ -18,11 +18,10 @@ trainer:
   loss_fn:
     _target_: the_well.benchmark.metrics.MSE
   formatter: channels_first_default
-  epochs: 500
-  rollout_val_frequency: 10
-  pushforward: True
+  rollout_val_frequency: 2
 
 data:
   n_steps_input: 10
+  batch_size: 64
 
 name: unet_classic_pdebench

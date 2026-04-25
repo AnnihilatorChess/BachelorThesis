@@ -1,0 +1,22 @@
+# @package _global_
+# PDEBench-protocol experiment for CNO.
+# See docs/PDEBench_SWE_experiments.md for details.
+
+defaults:
+  - /data: pdebench_swe
+  - /model: cno_pdebench
+  - /lr_scheduler: cosine_with_warmup
+  - override /optimizer: adam_pdebench
+  - _self_
+
+trainer:
+  loss_fn:
+    _target_: the_well.benchmark.metrics.MSE
+  formatter: channels_first_default
+  rollout_val_frequency: 2
+
+data:
+  n_steps_input: 10
+  batch_size: 64
+
+name: cno_pdebench_swe
