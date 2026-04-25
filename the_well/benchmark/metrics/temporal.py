@@ -91,6 +91,10 @@ class ErrorGrowthRate(SummaryMetric):
         # log(nRMSE + eps) for numerical stability
         log_nrmse = torch.log(nrmse + self.eps)  # [T, C]
 
+        # Check for non-finite values (Inf/NaN) which crash the lstsq backend
+        if not torch.isfinite(log_nrmse).all():
+            return {"error_growth_rate": torch.zeros(C, device=device)}
+
         # Linear regression: log_nrmse = a + lambda * t
         # Design matrix [T, 2]: column of ones and column of t
         t = torch.arange(T, dtype=nrmse.dtype, device=device)
