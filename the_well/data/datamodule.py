@@ -274,6 +274,7 @@ class WellDataModule(AbstractDataModule):
             drop_last=True,
             sampler=sampler,
             persistent_workers=self.data_workers > 0,
+            prefetch_factor=4 if self.data_workers > 0 else None,
         )
 
     def val_dataloader(self) -> DataLoader:
@@ -304,6 +305,7 @@ class WellDataModule(AbstractDataModule):
             drop_last=True,
             sampler=sampler,
             persistent_workers=self.data_workers > 0,
+            prefetch_factor=4 if self.data_workers > 0 else None,
         )
 
     def rollout_val_dataloader(self) -> DataLoader:
@@ -334,6 +336,7 @@ class WellDataModule(AbstractDataModule):
             drop_last=True,
             sampler=sampler,
             persistent_workers=self.data_workers > 0,
+            prefetch_factor=4 if self.data_workers > 0 else None,
         )
 
     def test_dataloader(self) -> DataLoader:
@@ -363,6 +366,7 @@ class WellDataModule(AbstractDataModule):
             drop_last=True,
             sampler=sampler,
             persistent_workers=self.data_workers > 0,
+            prefetch_factor=4 if self.data_workers > 0 else None,
         )
 
     def rollout_test_dataloader(self) -> DataLoader:
@@ -392,6 +396,7 @@ class WellDataModule(AbstractDataModule):
             drop_last=True,
             sampler=sampler,
             persistent_workers=self.data_workers > 0,
+            prefetch_factor=4 if self.data_workers > 0 else None,
         )
 
     def __repr__(self) -> str:
