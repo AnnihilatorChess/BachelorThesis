@@ -20,7 +20,7 @@ trainer:
     _target_: the_well.benchmark.metrics.MSE
   formatter: channels_first_default
   epochs: 500
-  rollout_val_frequency: 10
+  rollout_val_frequency: 2
 
 data:
   n_steps_input: 10

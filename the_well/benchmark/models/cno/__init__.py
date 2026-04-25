@@ -24,43 +24,59 @@ def _get_bn(n_spatial_dims):
     return {1: nn.BatchNorm1d, 2: nn.BatchNorm2d, 3: nn.BatchNorm3d}[n_spatial_dims]
 
 
-def _interpolate(x, size, n_spatial_dims):
-    """Resolution-invariant interpolation using F.interpolate."""
+def _interpolate(x, size, n_spatial_dims, antialias=False):
+    """Resolution-invariant interpolation using F.interpolate.
+
+    `antialias=True` matches the paper's formal alias-free formulation (the reference
+    implementation uses compiled CUDA kernels for this). The pure PyTorch fallback
+    for antialiased bicubic has no cudnn path and a slow backward kernel, making it
+    ~12-18x slower than FNO on our hardware. We default to antialias=False to keep
+    training tractable; see docs/benchmark-comparability.md for the speed/accuracy
+    trade-off and the CNO paper's Appendix C.5 ablation.
+
+    `antialias` is only valid for bilinear/bicubic modes; ignored otherwise.
+    """
     mode = {1: "linear", 2: "bicubic", 3: "trilinear"}[n_spatial_dims]
-    return F.interpolate(x, size=tuple(int(s) for s in size), mode=mode, antialias=True)
+    kwargs = dict(size=tuple(int(s) for s in size), mode=mode)
+    if mode in ("bilinear", "bicubic"):
+        kwargs["antialias"] = antialias
+    return F.interpolate(x, **kwargs)
 
 
 class CNOActivation(nn.Module):
     """CNO activation: upsample to 2x, apply LeakyReLU, downsample to target size.
 
     This ensures the activation is applied at a higher resolution to avoid aliasing,
-    which is a key design choice in the CNO paper.
+    which is a key design choice in the CNO paper. `antialias` controls whether the
+    bicubic interpolation uses a scale-aware low-pass filter; defaults to False for
+    training throughput (see `_interpolate` docstring).
     """
 
-    def __init__(self, in_size, out_size, n_spatial_dims):
+    def __init__(self, in_size, out_size, n_spatial_dims, antialias=False):
         super().__init__()
         self.in_size = in_size
         self.out_size = out_size
         self.n_spatial_dims = n_spatial_dims
+        self.antialias = antialias
         self.act = nn.LeakyReLU()
         self.upsampled_size = tuple(2 * s for s in in_size)
 
     def forward(self, x):
-        x = _interpolate(x, self.upsampled_size, self.n_spatial_dims)
+        x = _interpolate(x, self.upsampled_size, self.n_spatial_dims, self.antialias)
         x = self.act(x)
-        x = _interpolate(x, self.out_size, self.n_spatial_dims)
+        x = _interpolate(x, self.out_size, self.n_spatial_dims, self.antialias)
         return x
 
 
 class CNOBlock(nn.Module):
     """Conv -> BatchNorm (optional) -> CNOActivation (with up/downsampling)."""
 
-    def __init__(self, in_channels, out_channels, in_size, out_size, n_spatial_dims, use_bn=True):
+    def __init__(self, in_channels, out_channels, in_size, out_size, n_spatial_dims, use_bn=True, antialias=False):
         super().__init__()
         Conv = _get_conv(n_spatial_dims)
         self.conv = Conv(in_channels, out_channels, kernel_size=3, padding=1)
         self.bn = _get_bn(n_spatial_dims)(out_channels) if use_bn else nn.Identity()
-        self.act = CNOActivation(in_size, out_size, n_spatial_dims)
+        self.act = CNOActivation(in_size, out_size, n_spatial_dims, antialias=antialias)
 
     def forward(self, x):
         return self.act(self.bn(self.conv(x)))
@@ -69,10 +85,10 @@ class CNOBlock(nn.Module):
 class LiftProjectBlock(nn.Module):
     """Lifting (input -> hidden) or projection (hidden -> output) block."""
 
-    def __init__(self, in_channels, out_channels, size, n_spatial_dims, latent_dim=64):
+    def __init__(self, in_channels, out_channels, size, n_spatial_dims, latent_dim=64, antialias=False):
         super().__init__()
         Conv = _get_conv(n_spatial_dims)
-        self.block = CNOBlock(in_channels, latent_dim, size, size, n_spatial_dims, use_bn=False)
+        self.block = CNOBlock(in_channels, latent_dim, size, size, n_spatial_dims, use_bn=False, antialias=antialias)
         self.conv = Conv(latent_dim, out_channels, kernel_size=3, padding=1)
 
     def forward(self, x):
@@ -82,7 +98,7 @@ class LiftProjectBlock(nn.Module):
 class ResidualBlock(nn.Module):
     """Conv -> BN -> CNOActivation -> Conv -> BN + skip connection."""
 
-    def __init__(self, channels, size, n_spatial_dims, use_bn=True):
+    def __init__(self, channels, size, n_spatial_dims, use_bn=True, antialias=False):
         super().__init__()
         Conv = _get_conv(n_spatial_dims)
         BN = _get_bn(n_spatial_dims)
@@ -90,7 +106,7 @@ class ResidualBlock(nn.Module):
         self.conv2 = Conv(channels, channels, kernel_size=3, padding=1)
         self.bn1 = BN(channels) if use_bn else nn.Identity()
         self.bn2 = BN(channels) if use_bn else nn.Identity()
-        self.act = CNOActivation(size, size, n_spatial_dims)
+        self.act = CNOActivation(size, size, n_spatial_dims, antialias=antialias)
 
     def forward(self, x):
         out = self.act(self.bn1(self.conv1(x)))
@@ -101,10 +117,10 @@ class ResidualBlock(nn.Module):
 class ResNet(nn.Module):
     """Stack of ResidualBlocks."""
 
-    def __init__(self, channels, size, num_blocks, n_spatial_dims, use_bn=True):
+    def __init__(self, channels, size, num_blocks, n_spatial_dims, use_bn=True, antialias=False):
         super().__init__()
         self.blocks = nn.Sequential(
-            *[ResidualBlock(channels, size, n_spatial_dims, use_bn) for _ in range(num_blocks)]
+            *[ResidualBlock(channels, size, n_spatial_dims, use_bn, antialias=antialias) for _ in range(num_blocks)]
         )
 
     def forward(self, x):
@@ -141,6 +157,7 @@ class CNO(BaseModel):
         N_res_neck: int = 4,
         channel_multiplier: int = 16,
         use_bn: bool = True,
+        antialias: bool = False,
     ):
         super().__init__(n_spatial_dims, spatial_resolution)
 
@@ -164,41 +181,41 @@ class CNO(BaseModel):
         decoder_sizes = [tuple(s // (2 ** (N_layers - i)) for s in spatial_resolution) for i in range(N_layers + 1)]
 
         # Lift and project
-        self.lift = LiftProjectBlock(dim_in, encoder_features[0], spatial_resolution, n_spatial_dims)
+        self.lift = LiftProjectBlock(dim_in, encoder_features[0], spatial_resolution, n_spatial_dims, antialias=antialias)
         self.project = LiftProjectBlock(
-            encoder_features[0] + decoder_features_out[-1], dim_out, spatial_resolution, n_spatial_dims
+            encoder_features[0] + decoder_features_out[-1], dim_out, spatial_resolution, n_spatial_dims, antialias=antialias
         )
 
         # Encoder blocks (downsampling)
         self.encoder = nn.ModuleList([
             CNOBlock(encoder_features[i], encoder_features[i + 1],
-                     encoder_sizes[i], encoder_sizes[i + 1], n_spatial_dims, use_bn)
+                     encoder_sizes[i], encoder_sizes[i + 1], n_spatial_dims, use_bn, antialias=antialias)
             for i in range(N_layers)
         ])
 
         # ED expansion blocks (match encoder sizes to decoder sizes for skip connections)
         self.ed_expansion = nn.ModuleList([
             CNOBlock(encoder_features[i], encoder_features[i],
-                     encoder_sizes[i], decoder_sizes[N_layers - i], n_spatial_dims, use_bn)
+                     encoder_sizes[i], decoder_sizes[N_layers - i], n_spatial_dims, use_bn, antialias=antialias)
             for i in range(N_layers + 1)
         ])
 
         # Decoder blocks (upsampling)
         self.decoder = nn.ModuleList([
             CNOBlock(decoder_features_in[i], decoder_features_out[i],
-                     decoder_sizes[i], decoder_sizes[i + 1], n_spatial_dims, use_bn)
+                     decoder_sizes[i], decoder_sizes[i + 1], n_spatial_dims, use_bn, antialias=antialias)
             for i in range(N_layers)
         ])
 
         # ResNet blocks at each encoder level
         self.res_nets = nn.ModuleList([
-            ResNet(encoder_features[i], encoder_sizes[i], N_res, n_spatial_dims, use_bn)
+            ResNet(encoder_features[i], encoder_sizes[i], N_res, n_spatial_dims, use_bn, antialias=antialias)
             for i in range(N_layers)
         ])
 
         # Bottleneck ResNet
         self.res_net_neck = ResNet(
-            encoder_features[N_layers], encoder_sizes[N_layers], N_res_neck, n_spatial_dims, use_bn
+            encoder_features[N_layers], encoder_sizes[N_layers], N_res_neck, n_spatial_dims, use_bn, antialias=antialias
         )
 
     def forward(self, x):

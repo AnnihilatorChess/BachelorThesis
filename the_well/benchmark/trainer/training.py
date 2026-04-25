@@ -850,6 +850,13 @@ class Trainer:
             combined_test_logs |= test_logs | rollout_test_logs
             combined_test_logs[f"{test_prefix}_loss"] = test_loss
             combined_test_logs[f"{rollout_test_prefix}_loss"] = rollout_test_loss
+            # Log selected_epoch / selected_metric_value under the same chart group
+            # as the rest of the per-checkpoint test metrics (`test_best_<metric>_<ds>/...`),
+            # so wandb groups them in the existing panel instead of creating an empty section.
+            combined_test_logs[f"{test_prefix}_{ds}/selected_epoch"] = ckpt.get("epoch", -1)
+            combined_test_logs[f"{test_prefix}_{ds}/selected_metric_value"] = ckpt.get(
+                "metric_value", float("nan")
+            )
             logger.info(
                 f"best_{metric_key}: test_loss={test_loss:.6f}, "
                 f"rollout_test_loss={rollout_test_loss:.6f} "
@@ -857,12 +864,6 @@ class Trainer:
                 f"metric_value={ckpt.get('metric_value', float('nan'))})"
             )
 
-            # Per-checkpoint run-level metadata — goes to wandb.run.summary, not as a time series
-            # (otherwise each key creates its own near-empty chart panel).
-            headline[f"summary/{metric_key}__selected_epoch"] = ckpt.get("epoch", -1)
-            headline[f"summary/{metric_key}__selected_metric_value"] = ckpt.get(
-                "metric_value", float("nan")
-            )
             headline[f"summary/{metric_key}__test_vrmse"] = test_logs.get(
                 f"{test_prefix}_{ds}/full_VRMSE_T=all"
             )

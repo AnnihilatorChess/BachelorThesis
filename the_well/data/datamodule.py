@@ -273,6 +273,7 @@ class WellDataModule(AbstractDataModule):
             shuffle=shuffle,
             drop_last=True,
             sampler=sampler,
+            persistent_workers=self.data_workers > 0,
         )
 
     def val_dataloader(self) -> DataLoader:
@@ -302,6 +303,7 @@ class WellDataModule(AbstractDataModule):
             shuffle=shuffle,
             drop_last=True,
             sampler=sampler,
+            persistent_workers=self.data_workers > 0,
         )
 
     def rollout_val_dataloader(self) -> DataLoader:
@@ -331,6 +333,7 @@ class WellDataModule(AbstractDataModule):
             shuffle=shuffle,  # Shuffling because most batches we take a small subsample
             drop_last=True,
             sampler=sampler,
+            persistent_workers=self.data_workers > 0,
         )
 
     def test_dataloader(self) -> DataLoader:
@@ -359,6 +362,7 @@ class WellDataModule(AbstractDataModule):
             shuffle=False,
             drop_last=True,
             sampler=sampler,
+            persistent_workers=self.data_workers > 0,
         )
 
     def rollout_test_dataloader(self) -> DataLoader:
@@ -387,6 +391,7 @@ class WellDataModule(AbstractDataModule):
             shuffle=False,
             drop_last=True,
             sampler=sampler,
+            persistent_workers=self.data_workers > 0,
         )
 
     def __repr__(self) -> str:
