@@ -192,21 +192,16 @@ def main(cfg: DictConfig):
     logger.info(f"Configuration:\n{OmegaConf.to_yaml(cfg)}")
     # Initiate wandb logging.
     # group = experiment config without seed, so all seeds of the same run appear together.
-    # name  = experiment config + seed + index, so individual runs are distinguishable.
-    run_idx = osp.basename(experiment_folder)
+    # name  = experiment config + seed, so individual runs are distinguishable.
     wandb_logged_cfg = OmegaConf.to_container(cfg, resolve=True)
     wandb_logged_cfg["experiment_folder"] = experiment_folder
-    
-    run_name_base = cfg.run_name if cfg.run_name else experiment_name
-    wandb_run_name = f"{run_name_base}-{cfg.model._target_.split('.')[-1]}-seed{cfg.seed}-run{run_idx}"
-    
     wandb.init(
         dir=experiment_folder,
         project=cfg.wandb_project_name,
         group=experiment_name,
         config=wandb_logged_cfg,
-        name=wandb_run_name,
-        resume="allow" if cfg.auto_resume else None,
+        name=f"{cfg.run_name}-{cfg.model._target_.split('.')[-1]}-seed{cfg.seed}" if cfg.run_name else f"{experiment_name}-seed{cfg.seed}",
+        resume=True,
     )
 
     # Retrieve multiple processes context to setup DDP
