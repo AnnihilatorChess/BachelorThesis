@@ -67,9 +67,13 @@ def configure_experiment(
     # If using default naming, check for auto-resume, otherwise make a new folder with default name
     if len(experiment_folder) == 0:
         if osp.exists(base_experiment_folder):
-            prev_runs = sorted(os.listdir(base_experiment_folder), key=lambda x: int(x))
+            prev_runs = [
+                d for d in os.listdir(base_experiment_folder) if d.isdigit()
+            ]
+            prev_runs = sorted(prev_runs, key=lambda x: int(x))
         else:
             prev_runs = []
+
         if (validation_mode or cfg.auto_resume) and len(prev_runs) > 0:
             experiment_folder = osp.join(base_experiment_folder, prev_runs[-1])
         elif validation_mode:
@@ -77,9 +81,16 @@ def configure_experiment(
                 f"Validation mode enabled but no previous runs found in {base_experiment_folder}."
             )
         else:
-            experiment_folder = osp.join(base_experiment_folder, str(len(prev_runs)))
-    # Now check for default checkpoint options - if override used, ignore
-    if osp.exists(experiment_folder) and len(checkpoint_file) == 0:
+            # Create a new folder with an incremented index to avoid collisions if previous runs were deleted
+            next_idx = int(prev_runs[-1]) + 1 if len(prev_runs) > 0 else 0
+            experiment_folder = osp.join(base_experiment_folder, str(next_idx))
+
+    # Now check for default checkpoint options - only if auto-resume or validation mode is enabled
+    if (
+        (validation_mode or cfg.auto_resume)
+        and osp.exists(experiment_folder)
+        and len(checkpoint_file) == 0
+    ):
         last_chpt = osp.join(experiment_folder, "checkpoints", "recent.pt")
         # If there's a checkpoint file, consider this a resume. Otherwise, this is new run.
         if osp.isfile(last_chpt):
