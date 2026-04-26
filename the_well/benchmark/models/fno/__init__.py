@@ -1,6 +1,80 @@
 # from typing import Dict, Tuple
 
 import torch
+
+# --- Monkey patch for cuFFT float16 power-of-two limitation ---
+if not getattr(torch.fft, "_is_patched_for_amp", False):
+    _original_rfftn = torch.fft.rfftn
+    _original_irfftn = torch.fft.irfftn
+    _original_fft2 = getattr(torch.fft, "fft2", None)
+    _original_ifft2 = getattr(torch.fft, "ifft2", None)
+
+    _fft_fallback_cache = set()
+
+    def _patched_rfftn(input, *args, **kwargs):
+        if input.dtype == torch.float16:
+            if input.shape in _fft_fallback_cache:
+                return _original_rfftn(input.float(), *args, **kwargs)
+            try:
+                return _original_rfftn(input, *args, **kwargs)
+            except RuntimeError as e:
+                if "powers of two" in str(e).lower():
+                    _fft_fallback_cache.add(input.shape)
+                    return _original_rfftn(input.float(), *args, **kwargs)
+                raise
+        return _original_rfftn(input, *args, **kwargs)
+
+    def _patched_irfftn(input, *args, **kwargs):
+        if input.dtype == torch.complex32:
+            if input.shape in _fft_fallback_cache:
+                return _original_irfftn(input.cfloat(), *args, **kwargs)
+            try:
+                return _original_irfftn(input, *args, **kwargs)
+            except RuntimeError as e:
+                if "powers of two" in str(e).lower():
+                    _fft_fallback_cache.add(input.shape)
+                    return _original_irfftn(input.cfloat(), *args, **kwargs)
+                raise
+        return _original_irfftn(input, *args, **kwargs)
+
+    def _patched_fft2(input, *args, **kwargs):
+        if _original_fft2 is None: return input
+        if input.dtype == torch.float16:
+            if input.shape in _fft_fallback_cache:
+                return _original_fft2(input.float(), *args, **kwargs)
+            try:
+                return _original_fft2(input, *args, **kwargs)
+            except RuntimeError as e:
+                if "powers of two" in str(e).lower():
+                    _fft_fallback_cache.add(input.shape)
+                    return _original_fft2(input.float(), *args, **kwargs)
+                raise
+        return _original_fft2(input, *args, **kwargs)
+
+    def _patched_ifft2(input, *args, **kwargs):
+        if _original_ifft2 is None: return input
+        if input.dtype == torch.complex32:
+            if input.shape in _fft_fallback_cache:
+                return _original_ifft2(input.cfloat(), *args, **kwargs)
+            try:
+                return _original_ifft2(input, *args, **kwargs)
+            except RuntimeError as e:
+                if "powers of two" in str(e).lower():
+                    _fft_fallback_cache.add(input.shape)
+                    return _original_ifft2(input.cfloat(), *args, **kwargs)
+                raise
+        return _original_ifft2(input, *args, **kwargs)
+
+    torch.fft.rfftn = _patched_rfftn
+    torch.fft.irfftn = _patched_irfftn
+    if _original_fft2 is not None:
+        torch.fft.fft2 = _patched_fft2
+    if _original_ifft2 is not None:
+        torch.fft.ifft2 = _patched_ifft2
+
+    torch.fft._is_patched_for_amp = True
+# --------------------------------------------------------------
+
 from neuralop.models import FNO as neuralop_FNO
 from torch.utils.checkpoint import checkpoint
 
