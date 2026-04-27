@@ -649,6 +649,18 @@ class WellDataset(Dataset):
         else:
             raise NotImplementedError()
 
+    def _get_h5_file(self, file_idx: int) -> h5.File:
+        if getattr(self, "_open_files", None) is None:
+            self._open_files = {}
+        if file_idx not in self._open_files:
+            file_obj = self.fs.open(
+                self.files_paths[file_idx], "rb", **IO_PARAMS["fsspec_params"]
+            )
+            self._open_files[file_idx] = h5.File(
+                file_obj, "r", **IO_PARAMS["h5py_params"]
+            )
+        return self._open_files[file_idx]
+
     def _load_one_sample(self, index):
         # Find specific file and local index
         file_idx = int(
@@ -678,14 +690,18 @@ class WellDataset(Dataset):
         data = {}
 
         output_steps = min(self.n_steps_output, self.max_rollout_steps)
-        with h5.File(
-            self.fs.open(
-                self.files_paths[file_idx], "rb", **IO_PARAMS["fsspec_params"]
-            ),
-            "r",
-            **IO_PARAMS["h5py_params"],
-        ) as f:
-            data["variable_fields"], data["constant_fields"] = self._reconstruct_fields(
+        f = self._get_h5_file(file_idx)
+        
+        data["variable_fields"], data["constant_fields"] = self._reconstruct_fields(
+            f,
+            self.caches[file_idx],
+            sample_idx,
+            time_idx,
+            self.n_steps_input + output_steps,
+            dt,
+        )
+        data["variable_scalars"], data["constant_scalars"] = (
+            self._reconstruct_scalars(
                 f,
                 self.caches[file_idx],
                 sample_idx,
@@ -693,36 +709,27 @@ class WellDataset(Dataset):
                 self.n_steps_input + output_steps,
                 dt,
             )
-            data["variable_scalars"], data["constant_scalars"] = (
-                self._reconstruct_scalars(
-                    f,
-                    self.caches[file_idx],
-                    sample_idx,
-                    time_idx,
-                    self.n_steps_input + output_steps,
-                    dt,
-                )
+        )
+
+        if self.boundary_return_type is not None:
+            data["boundary_conditions"] = self._reconstruct_bcs(
+                f,
+                self.caches[file_idx],
+                sample_idx,
+                time_idx,
+                self.n_steps_input + output_steps,
+                dt,
             )
 
-            if self.boundary_return_type is not None:
-                data["boundary_conditions"] = self._reconstruct_bcs(
-                    f,
-                    self.caches[file_idx],
-                    sample_idx,
-                    time_idx,
-                    self.n_steps_input + output_steps,
-                    dt,
-                )
-
-            if self.return_grid:
-                data["space_grid"], data["time_grid"] = self._reconstruct_grids(
-                    f,
-                    self.caches[file_idx],
-                    sample_idx,
-                    time_idx,
-                    self.n_steps_input + output_steps,
-                    dt,
-                )
+        if self.return_grid:
+            data["space_grid"], data["time_grid"] = self._reconstruct_grids(
+                f,
+                self.caches[file_idx],
+                sample_idx,
+                time_idx,
+                self.n_steps_input + output_steps,
+                dt,
+            )
         return data, file_idx, sample_idx, time_idx, dt
 
     def _preprocess_data(
