@@ -158,10 +158,14 @@ class FNO(BaseModel):
         self.initialized = False
         self.gradient_checkpointing = gradient_checkpointing
 
-        if self.n_spatial_dims == 2:
+        if self.n_spatial_dims == 1:
+            self.n_modes = (self.modes1,)
+        elif self.n_spatial_dims == 2:
             self.n_modes = (self.modes1, self.modes2)
         elif self.n_spatial_dims == 3:
             self.n_modes = (self.modes1, self.modes2, self.modes3)
+        else:
+            raise ValueError(f"Unsupported number of spatial dimensions for FNO: {self.n_spatial_dims}")
 
         self.model = NeuralOpsCheckpointWrapper(
             n_modes=self.n_modes,
