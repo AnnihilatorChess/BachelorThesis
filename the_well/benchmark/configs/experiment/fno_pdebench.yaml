@@ -25,4 +25,7 @@ data:
   n_steps_input: 10
   batch_size: 32
 
+optimizer:
+  lr: 0.0003
+
 name: fno_pdebench
