@@ -22,3 +22,4 @@ data:
 #   gradient_checkpointing: False
 data_workers: 4
 wandb_project_name: "bsc_TRL"
+wandb_group: "" # optional W&B group name; if empty, uses auto-generated experiment_name

@@ -198,7 +198,7 @@ def main(cfg: DictConfig):
     wandb.init(
         dir=experiment_folder,
         project=cfg.wandb_project_name,
-        group=experiment_name,
+        group=cfg.wandb_group if cfg.wandb_group else experiment_name,
         config=wandb_logged_cfg,
         name=f"{cfg.run_name}-{cfg.model._target_.split('.')[-1]}-seed{cfg.seed}" if cfg.run_name else f"{experiment_name}-seed{cfg.seed}",
         resume=True,
