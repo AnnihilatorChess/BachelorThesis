@@ -22,6 +22,5 @@ trainer:
 
 data:
   n_steps_input: 10
-  batch_size: 32
 
 name: unet_classic_pdebench
