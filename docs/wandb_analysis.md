@@ -147,19 +147,35 @@ Dataset: `turbulent_radiative_layer_2D` | Architecture: `fno`
 
 
 
-## Addendum: W&B Data Structure Notes for Best Model Checkpoints
+## Advanced Metric Extraction (Best Checkpoints Strategy)
 
-When analyzing runs that employ the *4 best model weights* strategy (saved for one-step nrmse/vrmse and rollout nrmse/vrmse), the evaluation metrics on the final test set are stored under specific prefixes. 
+In later stages of the thesis, we transitioned to saving 4 distinct "best" checkpoints per run to better capture model performance:
+- `best_one_step_nrmse`
+- `best_one_step_vrmse`
+- `best_rollout_nrmse`
+- `best_rollout_vrmse`
 
-### Key Metrics for Best Weights
-Instead of evaluating the *final* checkpoint (which may overfit or underfit depending on the epoch), rely on the evaluations of these 4 best weights. The keys in `r.summary` will follow this format:
-- `test_best_one_step_nrmse_{dataset}/full_NRMSE_T=all`
-- `test_best_one_step_vrmse_{dataset}/full_VRMSE_T=all`
-- `test_best_rollout_nrmse_{dataset}/full_NRMSE_T=all`
-- `test_best_rollout_vrmse_{dataset}/full_VRMSE_T=all`
+### Weight Set vs. Evaluation Task
 
-### Best Practices for Analysis
-1. **Groups over Config Inference**: Always use the wandb Group (`r.group`) when analyzing ablations (e.g. `baseline`, `TB_4`, `PF`) as it is far more reliable and easier to read than reverse-engineering the config dictionary.
-2. **Apples-to-Apples Comparisons**: Compare the same evaluation metric across different 'best' weights. For example, you should compare how the 'best one-step NRMSE' model performs on rollout NRMSE vs how the 'best rollout NRMSE' model performs on rollout NRMSE.
-3. **Variance in Best Models**: In some architectures (like FNO), the checkpoint with the best *validation* rollout NRMSE performs worse on the *test* set than the checkpoint with the best *validation* one-step NRMSE. This highlights the importance of having all 4 best weights stored.
-4. **Hardware and AMP Info**: Hardware specs (GPU) are sometimes difficult to extract solely from `r.config` as they might be stored in the W&B run metadata. For accurate runtime comparisons, check whether `r.config.get('trainer', {}).get('amp')` or `r.config.get('amp')` is true, as mixed-precision drastically affects runtime.
+A common point of confusion is the difference between the **weights used** and the **evaluation task**. Each best weight set is evaluated on both a one-step task and a full rollout task.
+
+The resulting summary keys in W&B follow this nested prefix structure:
+`{task}_best_{weights}_{dataset}/full_{metric}_T=all`
+
+| Key Component | Possible Values |
+|---|---|
+| `{task}` | `test` (One-Step), `rollout_test` (Full Rollout) |
+| `{weights}` | `one_step_nrmse`, `one_step_vrmse`, `rollout_nrmse`, `rollout_vrmse` |
+| `{metric}` | `NRMSE`, `VRMSE` |
+
+**Example**: To find the rollout performance of the model that was best at one-step NRMSE:
+`rollout_test_best_one_step_nrmse_turbulent_radiative_layer_2D/full_NRMSE_T=all`
+
+### Lessons Learned for Data Fetching
+
+1.  **Robust Numeric Parsing**: W&B summary values can occasionally be non-numeric (e.g., strings or NaNs) due to failed evaluations or logging errors. Always wrap metric extraction in a `float()` cast and handle `ValueError`/`TypeError`.
+2.  **Dataset-Specific Keys**: The dataset name is hardcoded into the summary keys (e.g., `..._pdebench_swe/...`). Scripts must dynamically determine the dataset based on the W&B project or run configuration.
+3.  **Group-Based Aggregation**: Rely on `run.group` for ablation grouping. It is much cleaner than parsing complex Hydra config dictionaries.
+4.  **Standard Deviation (STD)**: When reporting results, always include the STD across seeds to distinguish between architectural improvements and noise.
+5.  **Weight Sensitivity**: Architectures like **FNO** are extremely sensitive to the checkpoint selection. Their "best rollout" weights often perform worse on the test set than their "best one-step" weights, suggesting unstable rollout validation curves or overfitting to validation trajectories.
+6.  **AMP and Runtime**: Hardware comparisons are only valid if **AMP** status is identical. AMP drastically reduces runtime and VRAM usage.

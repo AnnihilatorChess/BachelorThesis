@@ -30,9 +30,11 @@ This index organizes all project guidance and knowledge resources for quick acce
 
 - **[extended-metrics.md](extended-metrics.md)** — **Primary reference** for rollout evaluation. Covers Sobolev H1, HighFreqEnergyRatio, ValidRolloutLength (VRL), Correlation Time, and Error Growth Rate (λ).
 - **[benchmark-comparability.md](benchmark-comparability.md)** — How The Well and PDEBench constructed their baselines, and how comparable our thesis setup is to each.
+- **[performance_analysis/bsc_TRL_analysis.md](performance_analysis/bsc_TRL_analysis.md)** — **TRL Results**. Extensive ablation analysis for the Turbulent Radiative Layer dataset.
+- **[performance_analysis/bsc_SWE_pdebench.md](performance_analysis/bsc_SWE_pdebench.md)** — **SWE Results (PDEBench Replication)**. Comparison of architectures and stabilization on Shallow Water Equations.
 - **[performance_analysis/summary.md](performance_analysis/summary.md)** — **Latest results summary**. Compares FNO and UNetClassic across stabilization techniques on TRL and SWE datasets.
 - **[performance_analysis/burgers_dataloader_bench.md](performance_analysis/burgers_dataloader_bench.md)** — Empirical DataLoader settings sweep for the 1D Burgers layout; explains how to get 29 % more throughput without changing HDF5 chunking.
-- **[wandb_analysis.md](wandb_analysis.md)** — Weights & Biases (W&B) workflow, run keys, and historical results from April 2025.
+- **[wandb_analysis.md](wandb_analysis.md)** — Weights & Biases (W&B) workflow, run keys, and **advanced metric extraction lessons**.
 
 ## Quick Reference
 
@@ -40,7 +42,8 @@ This index organizes all project guidance and knowledge resources for quick acce
 |-----------|---------|----------|
 | [AGENTS.md](../AGENTS.md) | Dev workflow (all agents) | Developers |
 | [extended-metrics.md](extended-metrics.md) | Metric definitions | Researchers |
-| [performance_analysis/summary.md](performance_analysis/summary.md) | Results & Baselines | Researchers |
+| [performance_analysis/bsc_TRL_analysis.md](performance_analysis/bsc_TRL_analysis.md) | TRL Ablation Results | Researchers |
+| [performance_analysis/bsc_SWE_pdebench.md](performance_analysis/bsc_SWE_pdebench.md) | SWE/PDEBench Results | Researchers |
 | [thesis-outline.md](thesis-outline.md) | Thesis Scope | Research context |
 
 ## Directory Structure
@@ -54,7 +57,10 @@ docs/
 ├── models/                        # Architecture notes
 │   └── cno.md
 ├── performance_analysis/          # Experiment results
-│   └── summary.md
+│   ├── bsc_TRL_analysis.md
+│   ├── bsc_SWE_pdebench.md
+│   ├── summary.md
+│   └── burgers_dataloader_bench.md
 ├── datasets/                      # Dataset-specific notes
 │   ├── gray_scott_reaction_diffusion.md
 │   └── pdebench_1d_burgers.md
