@@ -101,6 +101,7 @@ class WellDataModule(AbstractDataModule):
         rank: int = 1,
         boundary_return_type: Literal["padding", None] = "padding",
         transform: Optional[Augmentation] = None,
+        rollout_batch_size: int = 2,
         dataset_kws: Optional[
             Dict[
                 Literal["train", "val", "rollout_val", "test", "rollout_test"],
@@ -240,6 +241,7 @@ class WellDataModule(AbstractDataModule):
         self.world_size = world_size
         self.data_workers = data_workers
         self.rank = rank
+        self.rollout_batch_size = rollout_batch_size
 
     @property
     def is_distributed(self) -> bool:
@@ -331,7 +333,7 @@ class WellDataModule(AbstractDataModule):
             self.rollout_val_dataset,
             num_workers=self.data_workers,
             pin_memory=True,
-            batch_size=1,
+            batch_size=min(self.batch_size, self.rollout_batch_size),  # Speed up rollout validation
             shuffle=shuffle,  # Shuffling because most batches we take a small subsample
             drop_last=True,
             sampler=sampler,
@@ -391,7 +393,7 @@ class WellDataModule(AbstractDataModule):
             self.rollout_test_dataset,
             num_workers=self.data_workers,
             pin_memory=True,
-            batch_size=1,  # min(self.batch_size, len(self.rollout_test_dataset)),
+            batch_size=min(self.batch_size, self.rollout_batch_size),
             shuffle=False,
             drop_last=True,
             sampler=sampler,

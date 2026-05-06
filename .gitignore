@@ -88,6 +88,12 @@ benchmarking_results/
 node_modules/
 vendor/
 
+
+*.json
+/scripts
+/docs
+/datasets
+/papers
 # Ignore environment-specific files
 .env
 .env.local
