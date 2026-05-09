@@ -1,0 +1,4 @@
+# @package _global_
+data:
+  well_base_path: "/system/user/publicdata/the_well/datasets/"
+experiment_dir: "experiments/"
