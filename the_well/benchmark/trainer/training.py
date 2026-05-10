@@ -736,8 +736,6 @@ class Trainer:
         train_dataloader = self.datamodule.train_dataloader()
         val_dataloder = self.datamodule.val_dataloader()
         rollout_val_dataloader = self.datamodule.rollout_val_dataloader()
-        test_dataloader = self.datamodule.test_dataloader()
-        rollout_test_dataloader = self.datamodule.rollout_test_dataloader()
         val_loss = self.starting_val_loss
 
         for epoch in range(self.starting_epoch, self.max_epoch + 1):
@@ -811,6 +809,14 @@ class Trainer:
             # Log everything for the epoch in one go
             wandb.log(epoch_logs, step=epoch)
 
+        # Free up workers before final test evaluation to avoid resource exhaustion
+        # (especially when num_workers is high and persistent_workers=True)
+        del train_dataloader
+        del val_dataloder
+        del rollout_val_dataloader
+
+        test_dataloader = self.datamodule.test_dataloader()
+        rollout_test_dataloader = self.datamodule.rollout_test_dataloader()
         self._run_final_test_eval(test_dataloader, rollout_test_dataloader, epoch)
 
     def _run_final_test_eval(
@@ -899,6 +905,10 @@ class Trainer:
                 if v is not None:
                     wandb.run.summary[k] = v
 
+        # Final cleanup of test workers
+        del test_dataloader
+        del rollout_test_dataloader
+
     def validate(self):
         """Runs only validation passes - does not save checkpoints or perform training.
 
@@ -907,14 +917,14 @@ class Trainer:
         """
         val_dataloder = self.datamodule.val_dataloader()
         rollout_val_dataloader = self.datamodule.rollout_val_dataloader()
-        test_dataloader = self.datamodule.test_dataloader()
-        rollout_test_dataloader = self.datamodule.rollout_test_dataloader()
         epoch = self.max_epoch + 1
+
         # Regular val (current weights)
         val_loss, val_loss_dict = self.validation_loop(val_dataloder, full=True)
         logger.info(f"Post-run: validation loss {val_loss}")
         val_loss_dict |= {"valid": val_loss, "epoch": epoch}
         wandb.log(val_loss_dict, step=epoch)
+
         # Rollout val (current weights)
         rollout_val_loss, rollout_val_loss_dict = self.validation_loop(
             rollout_val_dataloader, valid_or_test="rollout_valid", full=True
@@ -926,4 +936,10 @@ class Trainer:
         }
         wandb.log(rollout_val_loss_dict, step=epoch)
 
+        # Free up workers before test eval
+        del val_dataloder
+        del rollout_val_dataloader
+
+        test_dataloader = self.datamodule.test_dataloader()
+        rollout_test_dataloader = self.datamodule.rollout_test_dataloader()
         self._run_final_test_eval(test_dataloader, rollout_test_dataloader, epoch - 1)

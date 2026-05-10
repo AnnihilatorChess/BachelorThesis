@@ -189,6 +189,7 @@ class WellDataset(Dataset):
         n_steps_output: int = 1,
         min_dt_stride: int = 1,
         max_dt_stride: int = 1,
+        data_fraction: float = 1.0,
         flatten_tensors: bool = True,
         cache_small: bool = True,
         max_cache_size: float = 1e9,
@@ -273,6 +274,13 @@ class WellDataset(Dataset):
         )
         self.files_paths = sub_files
         self.files_paths.sort()
+        
+        if data_fraction < 1.0:
+            num_files = max(1, int(len(self.files_paths) * data_fraction))
+            # Systematic sampling ensures even coverage across potentially sorted parameters
+            indices = np.linspace(0, len(self.files_paths) - 1, num_files, dtype=int)
+            self.files_paths = [self.files_paths[i] for i in indices]
+            
         self.caches = [{} for _ in self.files_paths]
         # Build multi-index
         self.metadata = self._build_metadata()

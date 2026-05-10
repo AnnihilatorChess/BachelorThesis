@@ -1,5 +1,5 @@
 """
-Convert PDEBench 1D Burgers dataset to The Well HDF5 format, 
+Convert PDEBench 1D Burgers dataset to The Well HDF5 format,
 and split each split into multiple files for parallel DataLoader I/O.
 
 PDEBench source: https://arxiv.org/abs/2210.07182
@@ -14,8 +14,27 @@ The Well target format:
   - Groups: dimensions/, t0_fields/, t1_fields/, t2_fields/, scalars/, boundary_conditions/
   - Directory structure: <dataset>/data/{train,valid,test}/<file>.hdf5
 
+PDEBench-protocol downsampling:
+  PDEBench's ``config_Bgs.yaml`` applies ``reduced_resolution=4`` (1024 → 256
+  spatial) and ``reduced_resolution_t=5`` (201 → 41 temporal) before training,
+  via plain ``data[::reduced_batch, ::reduced_resolution_t, ::reduced_resolution]``
+  slicing in their dataloader (``pdebench/models/fno/utils.py``). Pass these
+  flags below to bake the same naive subsampling into the converted HDF5
+  files, producing a separate output directory ``pdebench_1d_burgers_pdebench``.
+  The (untouched) full-resolution variant is the one the rest of the thesis
+  uses; the downsampled variant exists solely for PDEBench-protocol parity
+  experiments (``experiment/{fno,unet}_pdebench_burgers.yaml``).
+
 Usage:
-    python scripts/convert_pdebench_1d_burgers.py                 # convert + split
+    # full resolution (default; writes datasets/pdebench_1d_burgers/)
+    python scripts/convert_pdebench_1d_burgers.py
+
+    # PDEBench-protocol parity (writes datasets/pdebench_1d_burgers_pdebench/)
+    python scripts/convert_pdebench_1d_burgers.py --variant pdebench
+
+    # explicit subsampling factors
+    python scripts/convert_pdebench_1d_burgers.py \
+        --reduced_resolution 4 --reduced_resolution_t 5
 """
 
 import argparse
@@ -33,6 +52,8 @@ from pathlib import Path
 SOURCE_FILES = [
     (Path("datasets/PDEBench/1D_Burgers/1D_Burgers_Sols_Nu0.001.hdf5"), 0.001),
 ]
+# Default (full-resolution) output. The downsampled variant lives at
+# ``datasets/pdebench_1d_burgers_pdebench/`` (see ``resolve_output_layout``).
 OUTPUT_BASE = Path("datasets/pdebench_1d_burgers")
 DATASET_NAME = "pdebench_1d_burgers"
 
@@ -48,34 +69,60 @@ SPLIT_RANGES = {
 # Conversion helpers
 # ──────────────────────────────────────────────────────────────────────
 
-def convert_split(split: str, start: int, end: int, output_base: Path, repo_root: Path):
-    """Convert a range of PDEBench samples from multiple files into a single Well-format HDF5 file."""
+def convert_split(
+    split: str,
+    start: int,
+    end: int,
+    output_base: Path,
+    dataset_name: str,
+    repo_root: Path,
+    reduced_resolution: int = 1,
+    reduced_resolution_t: int = 1,
+):
+    """Convert a range of PDEBench samples from multiple files into a single Well-format HDF5 file.
+
+    ``reduced_resolution`` and ``reduced_resolution_t`` apply naive ``[::n]``
+    subsampling to the spatial and temporal axes respectively, mirroring
+    PDEBench's dataloader-time downsampling.
+    """
     n_traj_per_file = end - start
     n_files = len(SOURCE_FILES)
     n_traj = n_traj_per_file * n_files
 
     out_dir = output_base / "data" / split
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"{DATASET_NAME}.hdf5"
+    out_path = out_dir / f"{dataset_name}.hdf5"
 
     print(f"  Converting {split}: {n_traj} total trajectories -> {out_path}")
 
     # Read grids from the first file
     first_file_path, _ = SOURCE_FILES[0]
     with h5py.File(repo_root / first_file_path, "r") as src:
-        t = src["t-coordinate"][:201].astype(np.float32)  # Take only first 201 to match tensor shape
-        x = src["x-coordinate"][:].astype(np.float32)
+        # Take only first 201 to match tensor shape, then apply temporal stride.
+        t = src["t-coordinate"][:201:reduced_resolution_t].astype(np.float32)
+        x = src["x-coordinate"][::reduced_resolution].astype(np.float32)
 
-    n_steps = len(t)   # 201
-    nx = len(x)        # 1024
+    n_steps = len(t)   # 201 // reduced_resolution_t (rounded up)
+    nx = len(x)        # 1024 // reduced_resolution (rounded up)
+
+    if reduced_resolution > 1 or reduced_resolution_t > 1:
+        print(
+            f"    PDEBench-protocol downsampling: "
+            f"reduced_resolution={reduced_resolution}, "
+            f"reduced_resolution_t={reduced_resolution_t} "
+            f"(shape per traj: ({n_steps}, {nx}))"
+        )
 
     with h5py.File(out_path, "w") as dst:
         # ── File-level attributes ──────────────────────────────────
-        dst.attrs["dataset_name"] = DATASET_NAME
+        dst.attrs["dataset_name"] = dataset_name
         dst.attrs["grid_type"] = "cartesian"
         dst.attrs["n_spatial_dims"] = 1
         dst.attrs["n_trajectories"] = n_traj
         dst.attrs["simulation_parameters"] = ["nu"]
+        # Record provenance of the subsampling so we can tell variants apart.
+        dst.attrs["reduced_resolution"] = reduced_resolution
+        dst.attrs["reduced_resolution_t"] = reduced_resolution_t
 
         # ── Dimensions ─────────────────────────────────────────────
         dims = dst.create_group("dimensions")
@@ -131,7 +178,11 @@ def convert_split(split: str, start: int, end: int, output_base: Path, repo_root
             src_path = repo_root / src_rel_path
             print(f"    Reading {src_path.name} (nu={nu_val})")
             with h5py.File(src_path, "r") as src:
-                data = src["tensor"][start:end]
+                # Apply the same naive ``[::n]`` subsampling PDEBench uses in
+                # ``pdebench/models/fno/utils.py`` (see Burgers/Adv configs).
+                data = src["tensor"][
+                    start:end, ::reduced_resolution_t, ::reduced_resolution
+                ]
                 ds_u[offset : offset + n_traj_per_file] = data
                 ds_nu[offset : offset + n_traj_per_file] = nu_val
                 offset += n_traj_per_file
@@ -152,9 +203,9 @@ def convert_split(split: str, start: int, end: int, output_base: Path, repo_root
 # Stats
 # ──────────────────────────────────────────────────────────────────────
 
-def compute_stats(output_base: Path):
+def compute_stats(output_base: Path, dataset_name: str = DATASET_NAME):
     """Compute normalization statistics from the training split and write stats.yaml."""
-    train_path = output_base / "data" / "train" / f"{DATASET_NAME}.hdf5"
+    train_path = output_base / "data" / "train" / f"{dataset_name}.hdf5"
 
     print("\nComputing normalization statistics from training data...")
     with h5py.File(train_path, "r") as f:
@@ -265,16 +316,53 @@ def split_file(src_path: Path, n_splits: int):
 # Main
 # ──────────────────────────────────────────────────────────────────────
 
+def resolve_output_layout(reduced_resolution: int, reduced_resolution_t: int):
+    """Pick the output directory and dataset name based on the subsampling factors.
+
+    Full resolution (1, 1) → ``datasets/pdebench_1d_burgers``  (existing data,
+    used by the rest of the thesis).
+    Anything else → ``datasets/pdebench_1d_burgers_pdebench`` (PDEBench-protocol
+    parity dataset). Storing both side-by-side lets the thesis-wide
+    "no downsampling" rule and the parity experiments coexist without
+    overwriting each other.
+    """
+    if reduced_resolution == 1 and reduced_resolution_t == 1:
+        return Path("datasets/pdebench_1d_burgers"), "pdebench_1d_burgers"
+    return (
+        Path("datasets/pdebench_1d_burgers_pdebench"),
+        "pdebench_1d_burgers_pdebench",
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description="Convert PDEBench 1D Burgers to The Well format")
     parser.add_argument("--n_splits", type=int, default=16,
                         help="Number of files to split each split into (default: 16).")
     parser.add_argument("--no_split", action="store_true",
                         help="Skip the splitting step entirely.")
+    parser.add_argument("--variant", choices=("full", "pdebench"), default="full",
+                        help=("'full' keeps the original 201 x 1024 resolution. "
+                              "'pdebench' applies PDEBench's reduced_resolution=4 "
+                              "+ reduced_resolution_t=5 -> 41 x 256 (writes to a "
+                              "separate output directory, default 'full' is safe "
+                              "to re-run without disturbing the parity dataset)."))
+    parser.add_argument("--reduced_resolution", type=int, default=None,
+                        help="Naive [::n] spatial subsampling. Overrides --variant.")
+    parser.add_argument("--reduced_resolution_t", type=int, default=None,
+                        help="Naive [::n] temporal subsampling. Overrides --variant.")
     args = parser.parse_args()
 
     if args.no_split:
         args.n_splits = 1
+
+    # Resolve subsampling factors. Explicit flags trump --variant.
+    if args.reduced_resolution is not None or args.reduced_resolution_t is not None:
+        reduced_r = args.reduced_resolution or 1
+        reduced_t = args.reduced_resolution_t or 1
+    elif args.variant == "pdebench":
+        reduced_r, reduced_t = 4, 5
+    else:
+        reduced_r, reduced_t = 1, 1
 
     # Find repo_root dynamically
     if Path("datasets/PDEBench").exists():
@@ -284,9 +372,12 @@ def main():
     else:
         # Fallback to local script location
         repo_root = Path(__file__).resolve().parent.parent
-    output_base = repo_root / OUTPUT_BASE
 
-    print(f"Output: {output_base}")
+    output_rel, dataset_name = resolve_output_layout(reduced_r, reduced_t)
+    output_base = repo_root / output_rel
+
+    print(f"Variant: reduced_resolution={reduced_r}, reduced_resolution_t={reduced_t}")
+    print(f"Output:  {output_base}  (dataset_name='{dataset_name}')")
     print()
 
     # Verify source files
@@ -298,16 +389,20 @@ def main():
 
     # ── Step 1: Convert ───────────────────────────────────────────
     for split, (start, end) in SPLIT_RANGES.items():
-        convert_split(split, start, end, output_base, repo_root)
+        convert_split(
+            split, start, end, output_base, dataset_name, repo_root,
+            reduced_resolution=reduced_r,
+            reduced_resolution_t=reduced_t,
+        )
 
     # ── Step 2: Normalization stats ───────────────────────────────
-    compute_stats(output_base)
+    compute_stats(output_base, dataset_name)
 
     # ── Step 3: Split into multiple files ─────────────────────────
     if args.n_splits > 1:
         print(f"\nSplitting each file into {args.n_splits} parts...")
         for split in SPLIT_RANGES:
-            single_file = output_base / "data" / split / f"{DATASET_NAME}.hdf5"
+            single_file = output_base / "data" / split / f"{dataset_name}.hdf5"
             if single_file.exists():
                 print(f"  {split}/")
                 split_file(single_file, args.n_splits)

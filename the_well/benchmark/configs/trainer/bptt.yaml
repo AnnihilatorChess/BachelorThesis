@@ -1,0 +1,50 @@
+_target_: the_well.benchmark.trainer.bptt_training.BPTTTrainer
+epochs: 100
+val_frequency: 1
+rollout_val_frequency: 2
+short_validation_length: 0.5
+max_rollout_steps: 1000
+num_time_intervals: 5
+make_rollout_videos: False
+checkpoint_frequency: 0 # Frequency of saving checkpoints. If 0, only use best/most recent. Setting this to 1 uses A LOT of disk space.
+enable_amp: True
+loss_fn: ???
+checkpoint_path: "" # This is a default that is overridden by the code
+###############
+# added configs
+###############
+# BPTT configs (PDEBench-style autoregressive training).
+#
+# bptt_unroll_steps   = number of GRADIENT-TRACKED unrolled steps per batch.
+#                       FNO-AR uses the full trajectory; UNet PF-K uses 20.
+# pf_warmup_steps     = number of leading torch.no_grad() rollout steps before
+#                       the gradient-tracked tail. 0 = pure FNO-AR; >0 = PF-K.
+# loss_reduction      = "sum" matches PDEBench (per-step MSEs summed before
+#                       backward). "mean" divides by bptt_unroll_steps and was
+#                       this trainer's original behaviour.
+#
+# These three knobs are typically OVERRIDDEN by the experiment config. The
+# values below are conservative defaults that won't OOM if accidentally used
+# without an override.
+bptt_unroll_steps: 5
+pf_warmup_steps: 0
+loss_reduction: sum
+# pushforward configs
+pushforward: False
+pushforward_final_probs: [0.4, 0.2, 0.2, 0.2]
+pushforward_warmup_fraction: 0.2 # fraction of total epochs spent as pure 1-step warmup before pushforward ramps on
+# Noise injection configs
+noise_injection: False
+noise_std: 0.003 # in z-score-normalised space; literature values are 1e-4..1e-2 depending on field smoothness
+noise_anneal: True # linearly increase from 0 to noise_std over first half of training
+# Temporal bundling configs
+temporal_bundle_size: 1 # 1 = standard single-step, K > 1 = predict K timesteps at once
+# Extended evaluation metrics
+extended_metrics: True
+valid_rollout_threshold: 0.2 # nRMSE threshold for valid rollout length
+correlation_time_threshold: 0.8 # PearsonR threshold for correlation time
+# Temporal loss interval boundaries.
+# null = equal-width bins based on num_time_intervals (dataset-agnostic, safe default).
+# Explicit list of integers = fixed boundaries, e.g. [0, 6, 12, 13, 30] for The Well paper.
+# NOTE: fixed boundaries must be set before running benchmarks — they cannot be changed retrospectively.
+temporal_loss_boundaries: [0, 6, 12, 13, 30]

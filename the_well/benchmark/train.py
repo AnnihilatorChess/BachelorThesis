@@ -61,7 +61,15 @@ def train(
     cfg.trainer["temporal_bundle_size"] = bundle_size
 
     # Set n_steps_output_train based on pushforward and bundling
-    if cfg.trainer["pushforward"] and bundle_size > 1:
+    if "bptt_unroll_steps" in cfg.trainer:
+        # BPTTTrainer needs ground-truth targets for every gradient-tracked step
+        # plus enough trailing inputs for the no_grad PF warmup; the dataloader
+        # delivers (warmup + unroll) future timesteps per training window.
+        pf_warmup = cfg.trainer.get("pf_warmup_steps", 0)
+        cfg.data["n_steps_output_train"] = (
+            cfg.trainer["bptt_unroll_steps"] + pf_warmup
+        ) * bundle_size
+    elif cfg.trainer["pushforward"] and bundle_size > 1:
         cfg.data["n_steps_output_train"] = bundle_size * 4
     elif cfg.trainer["pushforward"]:
         cfg.data["n_steps_output_train"] = 4

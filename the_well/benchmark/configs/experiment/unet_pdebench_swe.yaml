@@ -1,0 +1,43 @@
+# @package _global_
+# PDEBench parity: U-Net pushforward PF-20 training on 2D Shallow-Water.
+#
+# Mirrors `pdebench/models/unet/train.py` with `ar_mode=True, pushforward=True,
+# unroll_step=20`. Per batch:
+#   - 71 leading steps run under `torch.no_grad()` (rollout-only warmup).
+#   - 20 trailing steps run under autograd; their per-step MSEs are summed.
+#   - Single .backward() over the summed 20-step loss.
+#
+# This is the U-Net protocol that PDEBench actually reports as its baseline
+# (paper §4.3, Figure 5: "we used the U-Net with pushforward trick as our
+# baseline score for U-Net").
+#
+# Unroll horizon: ``config_rdb.yaml`` has t_train=101, initial_step=10,
+# reduced_resolution_t=1, unroll_step=20:
+#     warmup = (t_train - initial_step) - unroll_step = 91 - 20 = 71
+#     unroll = unroll_step                            = 20
+
+defaults:
+  - /data: pdebench_swe
+  - /model: unet_classic_pdebench
+  - /lr_scheduler: cosine_with_warmup
+  - override /optimizer: adam_pdebench
+  - override /trainer: bptt
+  - _self_
+
+trainer:
+  loss_fn:
+    _target_: the_well.benchmark.metrics.MSE
+  formatter: channels_first_default
+  rollout_val_frequency: 2
+  bptt_unroll_steps: 20
+  pf_warmup_steps: 71
+  loss_reduction: sum
+
+data:
+  n_steps_input: 10
+  batch_size: 5  # PDEBench's config_rdb.yaml batch_size
+
+optimizer:
+  lr: 1.0e-3
+
+name: unet_pdebench_swe

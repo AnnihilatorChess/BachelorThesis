@@ -29,6 +29,10 @@ WELL_DATASETS = [
     "viscoelastic_instability",
     "pdebench_swe",
     "pdebench_1d_burgers",
+    # PDEBench-protocol parity variant of pdebench_1d_burgers: spatial 4× and
+    # temporal 5× subsampled at conversion time (256 × 41) to match the naive
+    # ``data[::4, ::5]`` slicing used in PDEBench's dataloader.
+    "pdebench_1d_burgers_pdebench",
 ]
 
 

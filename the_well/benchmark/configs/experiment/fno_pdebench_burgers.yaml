@@ -1,0 +1,41 @@
+# @package _global_
+# PDEBench parity: FNO autoregressive (AR) training on 1D Burgers (nu=1e-3).
+#
+# Mirrors `pdebench/models/fno/train.py` with `training_type=autoregressive`.
+# At each step the model predicts the next frame; the per-step MSEs are summed
+# across all 31 unrolled steps and a single .backward() runs at the end.
+#
+# Unroll horizon and resolution: PDEBench's `config_Bgs.yaml` has
+#   t_train=200, initial_step=10, reduced_resolution=4, reduced_resolution_t=5
+# Burgers source files have 201 × 1024 raw shape; PDEBench's [::4, ::5] slicing
+# produces 41 × 256, then loops `for t in range(initial_step, min(t_train, 41))`
+# producing 31 = 41 - 10 gradient-tracked steps.
+#
+# We use the parity dataset `pdebench_1d_burgers_pdebench` (256 × 41), which
+# bakes the spatial+temporal subsampling into the HDF5 files at conversion
+# time (`scripts/convert_pdebench_1d_burgers.py --variant pdebench`). The
+# thesis-wide full-resolution variant `pdebench_1d_burgers` is unaffected.
+
+defaults:
+  - /data: pdebench_1d_burgers_pdebench
+  - /model: fno_pdebench
+  - /lr_scheduler: cosine_with_warmup
+  - override /optimizer: adam_pdebench
+  - override /trainer: bptt
+  - _self_
+
+trainer:
+  loss_fn:
+    _target_: the_well.benchmark.metrics.MSE
+  formatter: channels_first_default
+  rollout_val_frequency: 2
+  # Full-trajectory FNO-AR for Burgers: 31 gradient-tracked steps, no warmup.
+  bptt_unroll_steps: 31
+  pf_warmup_steps: 0
+  loss_reduction: sum
+
+data:
+  n_steps_input: 10
+  batch_size: 50  # PDEBench's config_Bgs.yaml batch_size
+
+name: fno_pdebench_burgers

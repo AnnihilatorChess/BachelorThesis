@@ -1,0 +1,26 @@
+# PDEBench-protocol parity variant of 1D Burgers.
+#
+# Spatial: 1024 → 256 (reduced_resolution=4, naive [::4])
+# Temporal: 201 → 41 (reduced_resolution_t=5, naive [::5])
+#
+# These factors come from `pdebench/models/config/args/config_Bgs.yaml`. The
+# subsampling is baked into the converted HDF5 files at conversion time
+# (`scripts/convert_pdebench_1d_burgers.py --variant pdebench`); the data layer
+# itself uses dt_stride=1 because the on-disk file is already at the target
+# temporal resolution.
+#
+# Used by the PDEBench-protocol experiment configs:
+#   experiment/fno_pdebench_burgers.yaml
+#   experiment/unet_pdebench_burgers.yaml
+#
+# The thesis-wide full-resolution variant lives at
+# `data/pdebench_1d_burgers.yaml` and is unaffected.
+
+_target_: the_well.data.WellDataModule
+batch_size: 50  # PDEBench's config_Bgs.yaml batch_size
+well_base_path: /mnt/gpuxl/polymathic/the_well/datasets/
+well_dataset_name: pdebench_1d_burgers_pdebench
+use_normalization: True
+min_dt_stride: 1
+max_dt_stride: 1
+rollout_batch_size: 16
