@@ -40,7 +40,7 @@ data:
 # norm layers only -- not the spectral conv). Worth keeping on for long
 # runs; safe to override with ``compile.enabled=false`` if not paying off.
 compile:
-  enabled: True
+  enabled: False
   mode: default
 
 name: fno_pdebench_swe
