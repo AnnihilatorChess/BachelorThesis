@@ -32,12 +32,13 @@ data:
   n_steps_input: 10
   batch_size: 5  # PDEBench's config_rdb.yaml batch_size
 
-# Per-step compute on PDEBench's tiny FNO at batch=1 is dwarfed by Python /
-# dispatch overhead (91 sequential forwards + 91 sequential backwards per
-# optimizer step). torch.compile fuses ops across each predict_next_step call
-# and amortises dispatch — typical 1.5-3x speedup in this regime. First
-# iteration takes ~30-90s while tracing+compiling. Disable here if it OOMs
-# on the Titan V (reduce-overhead's CUDA-graph memory pool is the risk).
+# torch.compile is opt-in here. CAVEAT: neuraloperator's SpectralConv uses
+# list-of-slices ``__getitem__`` on a parametrized weight that dynamo cannot
+# trace, so the expensive op falls back to eager (via
+# ``torch._dynamo.config.suppress_errors=True`` in train.py). Net speedup on
+# this experiment is therefore modest (~10-20%, optimising lift/projection/
+# norm layers only -- not the spectral conv). Worth keeping on for long
+# runs; safe to override with ``compile.enabled=false`` if not paying off.
 compile:
   enabled: True
   mode: default

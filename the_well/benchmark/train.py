@@ -119,16 +119,27 @@ def train(
 
     # Optional torch.compile. Helps when per-step GPU work is small relative
     # to Python/dispatch overhead (e.g. BPTT-91 at batch=1 on a small FNO).
-    # First iteration will spend 30s-3min compiling; subsequent iterations are
-    # 1.5-3x faster in dispatch-bound regimes. Compile fails silently → eager
-    # for any unsupported op (e.g. graph breaks in FFT paths).
+    # First iteration spends 30s-3min compiling; subsequent iterations are
+    # faster in dispatch-bound regimes.
+    #
+    # Caveat for FNO: ``neuraloperator``'s ``SpectralConv`` uses parametrized
+    # weights with list-of-slices ``__getitem__`` indexing, which dynamo
+    # cannot trace (raises a hard AssertionError, NOT a graph break). We set
+    # ``torch._dynamo.config.suppress_errors=True`` so dynamo falls back to
+    # eager for any unsupported scope -- the model still runs, just with
+    # reduced (or, for FNO, mostly cosmetic) speedup since the expensive op
+    # is precisely the one that won't trace. Disable via
+    # ``compile.enabled=false`` if it's not paying for itself.
     compile_cfg = cfg.get("compile", {})
     if compile_cfg and compile_cfg.get("enabled", False):
+        import torch._dynamo
+        torch._dynamo.config.suppress_errors = True
         compile_mode = compile_cfg.get("mode", "default")
         compile_fullgraph = compile_cfg.get("fullgraph", False)
         logger.info(
             f"torch.compile(model, mode={compile_mode!r}, fullgraph={compile_fullgraph}) "
-            f"-- first batch will be slow while tracing+compiling."
+            f"-- first batch will be slow while tracing+compiling. "
+            f"suppress_errors=True so untraceable ops fall back to eager."
         )
         model = torch.compile(model, mode=compile_mode, fullgraph=compile_fullgraph)
 
