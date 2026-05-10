@@ -3,7 +3,7 @@ import numpy as np
 import os
 from pathlib import Path
 
-def reshard_split(input_dir, output_dir, target_file_count=32):
+def reshard_split(input_dir, output_dir, target_file_count=64):
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -110,9 +110,9 @@ def reshard_split(input_dir, output_dir, target_file_count=32):
         in_f.close()
 
 if __name__ == "__main__":
-    base_data_path = "/system/user/publicdata/the_well/datasets/real_size/datasets/gray_scott_reaction_diffusion/data"
-    output_base_path = "/system/user/publicdata/the_well/datasets/real_size/datasets/gray_scott_reaction_diffusion_resharded/data"
+    base_data_path = "/system/user/publicdata/the_well/datasets/gray_scott_reaction_diffusion/data"
+    output_base_path = "/system/user/publicdata/the_well/datasets/gray_scott_reaction_diffusion_resharded/data"
     
     for split in ["train", "valid", "test"]:
         print(f"\nProcessing split: {split}")
-        reshard_split(os.path.join(base_data_path, split), os.path.join(output_base_path, split), target_file_count=32)
+        reshard_split(os.path.join(base_data_path, split), os.path.join(output_base_path, split), target_file_count=64)
