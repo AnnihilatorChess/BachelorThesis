@@ -117,6 +117,21 @@ def train(
         )
         model = model.to(device)
 
+    # Optional torch.compile. Helps when per-step GPU work is small relative
+    # to Python/dispatch overhead (e.g. BPTT-91 at batch=1 on a small FNO).
+    # First iteration will spend 30s-3min compiling; subsequent iterations are
+    # 1.5-3x faster in dispatch-bound regimes. Compile fails silently → eager
+    # for any unsupported op (e.g. graph breaks in FFT paths).
+    compile_cfg = cfg.get("compile", {})
+    if compile_cfg and compile_cfg.get("enabled", False):
+        compile_mode = compile_cfg.get("mode", "default")
+        compile_fullgraph = compile_cfg.get("fullgraph", False)
+        logger.info(
+            f"torch.compile(model, mode={compile_mode!r}, fullgraph={compile_fullgraph}) "
+            f"-- first batch will be slow while tracing+compiling."
+        )
+        model = torch.compile(model, mode=compile_mode, fullgraph=compile_fullgraph)
+
     logger.info(f"Instantiate optimizer {cfg.optimizer._target_}")
     if not validation_mode:
         optimizer: torch.optim.Optimizer = instantiate(

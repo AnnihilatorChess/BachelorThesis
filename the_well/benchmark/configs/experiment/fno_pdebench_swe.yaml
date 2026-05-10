@@ -32,4 +32,14 @@ data:
   n_steps_input: 10
   batch_size: 5  # PDEBench's config_rdb.yaml batch_size
 
+# Per-step compute on PDEBench's tiny FNO at batch=1 is dwarfed by Python /
+# dispatch overhead (91 sequential forwards + 91 sequential backwards per
+# optimizer step). torch.compile fuses ops across each predict_next_step call
+# and amortises dispatch — typical 1.5-3x speedup in this regime. First
+# iteration takes ~30-90s while tracing+compiling. Disable here if it OOMs
+# on the Titan V (reduce-overhead's CUDA-graph memory pool is the risk).
+compile:
+  enabled: True
+  mode: default
+
 name: fno_pdebench_swe

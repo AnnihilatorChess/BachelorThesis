@@ -23,5 +23,13 @@ data:
 # model:
 #   gradient_checkpointing: False
 data_workers: 8
-wandb_project_name: "bsc_TRL"
+# torch.compile knobs. Disabled by default; opt-in per experiment for runs
+# where Python/dispatch overhead dominates (e.g. small models with small
+# batches and long unrolls — PDEBench-FNO BPTT-91 at batch=1 is the canonical
+# case). First iteration pays 30s-3min compile cost; steady-state is faster.
+compile:
+  enabled: False
+  mode: default       # "default" | "reduce-overhead" | "max-autotune"
+  fullgraph: False    # require a single graph (no graph breaks); strict
+wandb_project_name: "bsc_data_test"
 wandb_group: "" # optional W&B group name; if empty, uses auto-generated experiment_name
