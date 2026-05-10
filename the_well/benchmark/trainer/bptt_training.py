@@ -108,11 +108,13 @@ class BPTTTrainer(Trainer):
         epoch_loss = 0.0
         train_logs: dict = {}
         start_time = time.time()
+        batch_start = time.time()
         n_batches = len(dataloader)
         print_interval = max(n_batches // 100, 1)
         K = self.bundle_size  # temporal bundle size; 1 by default
 
         for i, batch in enumerate(dataloader):
+            batch_time = time.time() - batch_start
             # y_true_all has shape [B, T, H, W, C] (channels-last format)
             _, y_true_all = self.formatter.process_input(batch)
             current_input_fields = batch["input_fields"].to(self.device)
@@ -175,6 +177,8 @@ class BPTTTrainer(Trainer):
                 if unroll > 0 and self.loss_reduction == "mean":
                     total_loss = total_loss / unroll
 
+            forward_time = time.time() - batch_start - batch_time
+
             if unroll > 0 and isinstance(total_loss, torch.Tensor):
                 self.grad_scaler.scale(total_loss).backward()
                 self.grad_scaler.step(self.optimizer)
@@ -182,16 +186,20 @@ class BPTTTrainer(Trainer):
                 self.optimizer.zero_grad()
                 epoch_loss += total_loss.item()
 
+            backward_time = time.time() - batch_start - forward_time - batch_time
+            total_time = time.time() - batch_start
+
             if i % print_interval == 0:
                 loss_val = (
                     total_loss.item() if isinstance(total_loss, torch.Tensor) else 0.0
                 )
                 logger.info(
                     f"Epoch {epoch}, Batch {i + 1}/{n_batches}: "
-                    f"BPTT loss {loss_val:.6g} "
-                    f"(warmup={warmup}, unroll={unroll}, "
-                    f"reduction={self.loss_reduction})"
+                    f"BPTT loss {loss_val}, total_time {total_time}, "
+                    f"batch time {batch_time}, forward time {forward_time}, "
+                    f"backward time {backward_time}"
                 )
+            batch_start = time.time()
 
         train_logs["epoch_time"] = time.time() - start_time
         train_logs["time_per_train_iter"] = train_logs["epoch_time"] / max(n_batches, 1)
