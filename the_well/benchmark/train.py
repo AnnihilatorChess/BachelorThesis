@@ -10,6 +10,7 @@ import random
 import hydra
 import numpy as np
 import torch
+import torch._dynamo  # noqa: F401  -- imported here so configuring it inside `train()` doesn't shadow the module-level `torch` import.
 import torch.distributed as dist
 import wandb
 from hydra.utils import instantiate
@@ -132,7 +133,6 @@ def train(
     # ``compile.enabled=false`` if it's not paying for itself.
     compile_cfg = cfg.get("compile", {})
     if compile_cfg and compile_cfg.get("enabled", False):
-        import torch._dynamo
         torch._dynamo.config.suppress_errors = True
         compile_mode = compile_cfg.get("mode", "default")
         compile_fullgraph = compile_cfg.get("fullgraph", False)
