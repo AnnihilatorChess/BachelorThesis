@@ -58,6 +58,9 @@ def train(
     validation_mode = cfg.validation_mode
     bundle_size = cfg.get("temporal_bundle_size", 1)
 
+    # Disable struct mode to allow injecting keys not explicitly defined in the YAML schema
+    OmegaConf.set_struct(cfg, False)
+
     # Sync top-level temporal_bundle_size into trainer config
     cfg.trainer["temporal_bundle_size"] = bundle_size
     
