@@ -60,6 +60,10 @@ def train(
 
     # Sync top-level temporal_bundle_size into trainer config
     cfg.trainer["temporal_bundle_size"] = bundle_size
+    
+    # Sync trainer max_rollout_steps to dataloader
+    if "max_rollout_steps" in cfg.trainer:
+        cfg.data["max_rollout_steps"] = cfg.trainer["max_rollout_steps"]
 
     # Set n_steps_output_train based on pushforward and bundling
     if "bptt_unroll_steps" in cfg.trainer:

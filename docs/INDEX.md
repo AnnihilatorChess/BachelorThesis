@@ -30,6 +30,7 @@ This index organizes all project guidance and knowledge resources for quick acce
 
 - **[extended-metrics.md](extended-metrics.md)** — **Primary reference** for rollout evaluation. Covers Sobolev H1, HighFreqEnergyRatio, ValidRolloutLength (VRL), Correlation Time, and Error Growth Rate (λ).
 - **[benchmark-comparability.md](benchmark-comparability.md)** — How The Well and PDEBench constructed their baselines, and how comparable our thesis setup is to each.
+- **[bptt_pdebench_audit.md](bptt_pdebench_audit.md)** — **PDEBench-protocol BPTT audit**: implementation diff vs PDEBench's `fno/train.py` and `unet/train.py`, current config-by-config parity table, hardware findings (Titan V vs Quadro GV100), `torch.compile` incompatibility, deliberate deviations, and a cookbook of invocation commands.
 - **[performance_analysis/bsc_TRL_analysis.md](performance_analysis/bsc_TRL_analysis.md)** — **TRL Results**. Extensive ablation analysis for the Turbulent Radiative Layer dataset.
 - **[performance_analysis/bsc_SWE_pdebench.md](performance_analysis/bsc_SWE_pdebench.md)** — **SWE Results (PDEBench Replication)**. Comparison of architectures and stabilization on Shallow Water Equations.
 - **[performance_analysis/summary.md](performance_analysis/summary.md)** — **Latest results summary**. Compares FNO and UNetClassic across stabilization techniques on TRL and SWE datasets.
@@ -53,6 +54,8 @@ docs/
 ├── INDEX.md                       # This file
 ├── thesis-outline.md              # Thesis scope
 ├── extended-metrics.md            # Evaluation reference
+├── benchmark-comparability.md     # The Well vs PDEBench vs us
+├── bptt_pdebench_audit.md         # PDEBench-protocol BPTT audit + hardware notes
 ├── wandb_analysis.md              # W&B workflow
 ├── models/                        # Architecture notes
 │   └── cno.md

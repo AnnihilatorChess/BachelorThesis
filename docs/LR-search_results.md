@@ -13,8 +13,15 @@ We use batch_size = 32 and search for LR over `[0.003,0.001, 0.0003]`
 
 ## BUR
 
-We use batch_size = 512 and search for LR over `[0.003,0.001, 0.0003]`
+We use batch_size = 512 for normal and 5 for BPTT training and search for LR over `[0.003,0.001, 0.0003]`
+
 ### Results for baselines
+1. FNO-BPTT: 0.003 --> didnt converge at 100 epoch
+2. UNet-BPTT: 0.003 --> interesting that this is better for BPTT
+3. FNO-SMALL: 0.001 (all three are really close, taking the middle as it is <1% better and the safe option)
+4. UNet-SMALL: 0.0003 best for one step
+
+#### Results for legacy baselines
 1. UNet: 0.001
 2. UNet-SMALL: 0.0003
 3. FNO-SMALL: 0.0003
