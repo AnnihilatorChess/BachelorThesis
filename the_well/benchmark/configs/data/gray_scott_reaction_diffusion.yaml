@@ -5,3 +5,4 @@ well_dataset_name: gray_scott_reaction_diffusion
 use_normalization: True
 min_dt_stride: 1
 max_dt_stride: 1
+rollout_batch_size: 8
