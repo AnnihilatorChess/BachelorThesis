@@ -4,3 +4,13 @@ N_res: 4
 N_res_neck: 4
 channel_multiplier: 96
 use_bn: True
+# Activation backend:
+#   "torch"    -> pure-PyTorch F.interpolate + LeakyReLU. Works on 1D/2D/3D, CPU/GPU,
+#                 Windows/Linux. Slow under autograd (no cuDNN backend for
+#                 antialiased bicubic). Default.
+#   "compiled" -> vendored StyleGAN3 filtered_lrelu CUDA op. 2D only (silently
+#                 falls back to torch for 1D/3D). Requires Linux + nvcc matching
+#                 torch.version.cuda + ninja + scipy. First call triggers a
+#                 ~5-15 min JIT compile, cached in $TORCH_EXTENSIONS_DIR.
+activation: torch
+antialias: False

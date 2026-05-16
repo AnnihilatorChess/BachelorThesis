@@ -4,3 +4,6 @@ N_res: 1
 N_res_neck: 4
 channel_multiplier: 32
 use_bn: True
+# See cno.yaml for the activation/antialias documentation.
+activation: torch
+antialias: False
