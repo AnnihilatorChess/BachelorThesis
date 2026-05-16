@@ -15,7 +15,7 @@ trainer:
     _target_: the_well.benchmark.metrics.MSE
   formatter: channels_first_default
   rollout_val_frequency: 2
-  bptt_unroll_steps: 91
+  bptt_unroll_steps: 191
   pf_warmup_steps: 0
   loss_reduction: sum
 
