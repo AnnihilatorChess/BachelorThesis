@@ -14,7 +14,7 @@ We use batch_size = 32 and search for LR over `[0.003,0.001, 0.0003]`
 
 ## BUR-downsized
 
-We use batch_size = 512 for normal and 5 for BPTT training and search for LR over `[0.003,0.001, 0.0003]`
+We use batch_size = 512 for normal and 50 for BPTT training and search for LR over `[0.003,0.001, 0.0003]`
 
 ### Results for baselines
 1. FNO-BPTT: 0.003 --> didnt converge at 100 epoch
@@ -29,3 +29,11 @@ We use batch_size = 512 for normal and 5 for BPTT training and search for LR ove
 2. UNet-SMALL: 0.0003
 3. FNO-SMALL: 0.0003
 4. FNO: 0.001
+
+## BUR
+
+We use batch_size=512 for normal and 50
+
+### Results
+1. FNO-BPTT: 0.001
+2. FNO: 0.001
