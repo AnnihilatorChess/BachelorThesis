@@ -359,13 +359,16 @@ class Trainer:
                 self.device
             )
 
+        if not train and not self.is_delta:
+            moving_batch = self.normalize(moving_batch)
+
         K = self.bundle_size
         y_preds = []
         step = 0
         while step < rollout_steps:
             remaining = rollout_steps - step
 
-            if not train:
+            if not train and self.is_delta:
                 moving_batch = self.normalize(moving_batch)
 
             inputs, _ = formatter.process_input(moving_batch)
@@ -381,11 +384,8 @@ class Trainer:
             y_pred_bundle = formatter.process_output_unbundle(y_pred, K, self.n_fields)
 
             # Handle denormalization for validation.
-            # For k_idx==0: denormalize both moving_batch and the prediction together
-            # (original single-step behaviour, keeps moving_batch in physical units).
-            # For k_idx>0: moving_batch is already in physical units, so only
-            # denormalize the prediction to avoid applying batch denorm K times.
-            if not train:
+            # For Delta datasets we must denormalize in the loop. For state datasets, we skip it.
+            if not train and self.is_delta:
                 y_pred_bundle = y_pred_bundle.clone()
                 for k_idx in range(min(K, remaining)):
                     single_pred = y_pred_bundle[:, k_idx]
@@ -393,14 +393,9 @@ class Trainer:
                         moving_batch, single_pred = self.denormalize(moving_batch, single_pred)
                     else:
                         if hasattr(self, "dset_norm") and self.dset_norm:
-                            if self.is_delta:
-                                single_pred = self.dset_norm.delta_denormalize_flattened(
-                                    single_pred, "variable"
-                                )
-                            else:
-                                single_pred = self.dset_norm.denormalize_flattened(
-                                    single_pred, "variable"
-                                )
+                            single_pred = self.dset_norm.delta_denormalize_flattened(
+                                single_pred, "variable"
+                            )
                     y_pred_bundle[:, k_idx] = single_pred
 
             # Truncate if this is the last bundle and doesn't fill completely
@@ -425,6 +420,12 @@ class Trainer:
             step += steps_taken
 
         y_pred_out = torch.cat(y_preds, dim=1)
+        y_preds.clear()
+
+        # Denormalize all predictions at once at the end for non-delta datasets
+        if not train and not self.is_delta:
+            if hasattr(self, "dset_norm") and self.dset_norm:
+                y_pred_out = self.dset_norm.denormalize_flattened(y_pred_out, "variable")
         y_ref = y_ref[:, :y_pred_out.shape[1]].to(self.device)
         return y_pred_out, y_ref
 
