@@ -278,10 +278,6 @@ class WellDataset(Dataset):
         self.files_paths.sort()
         
         self.file_bytes = {}
-        if self.load_into_ram:
-            for i, p in enumerate(self.files_paths):
-                with self.fs.open(p, "rb", **(storage_options or {})) as f:
-                    self.file_bytes[i] = f.read()
         
         if data_fraction < 1.0:
             num_files = max(1, int(len(self.files_paths) * data_fraction))
@@ -671,6 +667,11 @@ class WellDataset(Dataset):
         if file_idx not in self._open_files:
             if getattr(self, "load_into_ram", False):
                 import io
+                if getattr(self, "file_bytes", None) is None:
+                    self.file_bytes = {}
+                if file_idx not in self.file_bytes:
+                    with self.fs.open(self.files_paths[file_idx], "rb", **IO_PARAMS.get("fsspec_params", {})) as f:
+                        self.file_bytes[file_idx] = f.read()
                 file_obj = io.BytesIO(self.file_bytes[file_idx])
             else:
                 file_obj = self.fs.open(
