@@ -200,6 +200,7 @@ class WellDataset(Dataset):
         transform: Optional["Augmentation"] = None,
         min_std: float = 1e-4,
         storage_options: Optional[Dict] = None,
+        load_into_ram: bool = False,
     ):
         super().__init__()
         assert path is not None or (
@@ -252,6 +253,7 @@ class WellDataset(Dataset):
         self.cache_small = cache_small
         self.max_cache_size = max_cache_size
         self.transform = transform
+        self.load_into_ram = load_into_ram
         if self.min_dt_stride < self.max_dt_stride and self.full_trajectory_mode:
             raise ValueError(
                 "Full trajectory mode not supported with variable stride lengths"
@@ -274,6 +276,12 @@ class WellDataset(Dataset):
         )
         self.files_paths = sub_files
         self.files_paths.sort()
+        
+        self.file_bytes = {}
+        if self.load_into_ram:
+            for i, p in enumerate(self.files_paths):
+                with self.fs.open(p, "rb", **(storage_options or {})) as f:
+                    self.file_bytes[i] = f.read()
         
         if data_fraction < 1.0:
             num_files = max(1, int(len(self.files_paths) * data_fraction))
@@ -661,9 +669,13 @@ class WellDataset(Dataset):
         if getattr(self, "_open_files", None) is None:
             self._open_files = {}
         if file_idx not in self._open_files:
-            file_obj = self.fs.open(
-                self.files_paths[file_idx], "rb", **IO_PARAMS["fsspec_params"]
-            )
+            if getattr(self, "load_into_ram", False):
+                import io
+                file_obj = io.BytesIO(self.file_bytes[file_idx])
+            else:
+                file_obj = self.fs.open(
+                    self.files_paths[file_idx], "rb", **IO_PARAMS["fsspec_params"]
+                )
             self._open_files[file_idx] = h5.File(
                 file_obj, "r", **IO_PARAMS["h5py_params"]
             )

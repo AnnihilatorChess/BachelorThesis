@@ -11,6 +11,7 @@ We use batch_size = 32 and search for LR over `[0.003,0.001, 0.0003]`
 5. CNO-SMALL: 0.0003
 6. FNO-SMALL-BPTT: 0.003 best 0.001 matches paper better
 7. UNet-SMALL-BPTT: 0.0003 best, all are close
+8. CNO: 0.001 (0.0003 also good, more stable, better rollout)
 
 ## BUR-downsized
 
@@ -37,3 +38,10 @@ We use batch_size=512 for normal and 50
 ### Results
 1. FNO-BPTT: 0.001
 2. FNO: 0.001
+
+## AM 
+
+We use batch_size=12
+
+1. UNet: 0.003 (0.001 also good, better for rollout even)
+2. FNO: 0.003 (Catastrophic for all LRs, all get worse over time)
