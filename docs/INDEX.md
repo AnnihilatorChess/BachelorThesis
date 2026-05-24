@@ -33,8 +33,8 @@ This index organizes all project guidance and knowledge resources for quick acce
 - **[bptt_pdebench_audit.md](bptt_pdebench_audit.md)** — **PDEBench-protocol BPTT audit**: implementation diff vs PDEBench's `fno/train.py` and `unet/train.py`, current config-by-config parity table, hardware findings (Titan V vs Quadro GV100), `torch.compile` incompatibility, deliberate deviations, and a cookbook of invocation commands.
 - **[performance_analysis/bsc_TRL_analysis.md](performance_analysis/bsc_TRL_analysis.md)** — **TRL Results**. Extensive ablation analysis for the Turbulent Radiative Layer dataset.
 - **[performance_analysis/bsc_SWE_pdebench.md](performance_analysis/bsc_SWE_pdebench.md)** — **SWE Results (PDEBench Replication)**. Comparison of architectures and stabilization on Shallow Water Equations.
-- **[performance_analysis/summary.md](performance_analysis/summary.md)** — **Latest results summary**. Compares FNO and UNetClassic across stabilization techniques on TRL and SWE datasets.
-- **[performance_analysis/burgers_dataloader_bench.md](performance_analysis/burgers_dataloader_bench.md)** — Empirical DataLoader settings sweep for the 1D Burgers layout; explains how to get 29 % more throughput without changing HDF5 chunking.
+- **[performance_analysis/summary.md](outdated/summary.md)** — **Latest results summary**. Compares FNO and UNetClassic across stabilization techniques on TRL and SWE datasets.
+- **[performance_analysis/burgers_dataloader_bench.md](outdated/burgers_dataloader_bench.md)** — Empirical DataLoader settings sweep for the 1D Burgers layout; explains how to get 29 % more throughput without changing HDF5 chunking.
 - **[wandb_analysis.md](wandb_analysis.md)** — Weights & Biases (W&B) workflow, run keys, and **advanced metric extraction lessons**.
 
 ## Quick Reference

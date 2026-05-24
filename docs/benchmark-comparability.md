@@ -168,4 +168,4 @@ By using the `*_pdebench` experiment configs, we achieve high comparability with
 - PDEBench paper: Takamoto et al., "PDEBench", NeurIPS 2022. https://arxiv.org/abs/2210.07182
 - PDEBench repo (locally cloned): `C:\Users\simon\Documents\GitHub\PDEBench`
 - Our extended metrics: [extended-metrics.md](extended-metrics.md)
-- Our performance log: [performance_analysis/summary.md](performance_analysis/summary.md)
+- Our performance log: [performance_analysis/summary.md](outdated/summary.md)

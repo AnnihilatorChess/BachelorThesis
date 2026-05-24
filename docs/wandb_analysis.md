@@ -109,33 +109,37 @@ for row in history:
 > by `full=epoch==max_epoch` in the rollout validation call, so they only appeared at
 > epoch 100. This was fixed: rollout validation now always uses `full=True`.
 
-## Results Summary — Server Runs (2025-04)
+## Results Summary & Aggregation
 
-Dataset: `turbulent_radiative_layer_2D` | Architecture: `fno`
+The extensive results previously documented here have been migrated and are continuously updated in the dedicated dataset-specific analysis files:
+- `docs/performance_analysis/bsc_TRL_analysis.md` (The Well)
+- `docs/performance_analysis/bsc_SWE_pdebench.md` (PDEBench)
+- `docs/performance_analysis/BIG_SWE_input-4_analysis.md` (PDEBench)
+- `docs/performance_analysis/BUR_DOWN_analysis.md` (PDEBench)
 
-| Run ID | Config | State | VRMSE (test) | density NRMSE | vx NRMSE | vy NRMSE |
-|---|---|---|---|---|---|---|
-| `jrjj4433` | FNO baseline, seed=1 | finished | **3.94** | 0.395 | 0.630 | 2.025 |
-| `zklzuanl` | FNO baseline, seed=2 | running | — | — | — | — |
-| `vfy6bvy9` | bundle K=4, seed=1 | finished | **1.61** | 0.337 | 0.492 | 0.910 |
-| `jguq751i` | bundle K=4, seed=2 | finished | **1.55** | 0.343 | 0.489 | 0.875 |
-| `r5oe59zj` | noise σ=0.01, seed=1 | failed* | — | — | — | — |
+### Dataset Evaluation Conventions
 
-*Noise injection run completed 100 training epochs but failed during final test evaluation (server-side GPU issue suspected).
+To maintain strict comparability with the original source papers, we employ distinct evaluation conventions depending on the dataset family:
 
-### Extended metrics at test time
+#### 1. The Well Datasets (e.g., `turbulent_radiative_layer_2D`, `active_matter`)
+- **Primary Metric**: **VRMSE** (Variance Scaled Root Mean Squared Error). NRMSE is tracked but omitted from main summary tables.
+- **Time-Averaged Intervals**: In addition to the full trajectory error (`T=all`), the time-averaged errors for intervals `T=6:12` and `T=13:30` are reported.
+- **Weight Selection**: 
+  - "Best Rollout Weights" strictly evaluates the checkpoint saved for lowest **rollout VRMSE**.
+  - "Best One-Step Weights" strictly evaluates the checkpoint saved for lowest **one-step VRMSE**.
 
-| Run | density corr_time | vx corr_time | density valid_rollout | vx valid_rollout | full nrmse_auc |
-|---|---|---|---|---|---|
-| FNO seed1 | 52.6/97 (54%) | 32.1/97 (33%) | 11.9/97 (12%) | 9.4/97 (10%) | 0.785 |
-| bundle4 seed1 | 77.9/97 (80%) | 57.8/97 (60%) | 18.6/97 (19%) | 15.1/97 (16%) | 0.449 |
-| bundle4 seed2 | 78.9/97 (81%) | 53.9/97 (56%) | 17.0/97 (18%) | 12.7/97 (13%) | 0.439 |
+#### 2. PDEBench Datasets (e.g., `pdebench_swe`, `pdebench_1d_burgers_pdebench`)
+- **Primary Metric**: **NRMSE** (Normalized Root Mean Squared Error). VRMSE is tracked but omitted from main summary tables to match the PDEBench paper's methodology.
+- **Weight Selection**: 
+  - "Best Rollout Weights" strictly evaluates the checkpoint saved for lowest **rollout NRMSE**.
+  - "Best One-Step Weights" strictly evaluates the checkpoint saved for lowest **one-step NRMSE**.
 
-**Temporal bundling K=4** consistently improves all metrics:
-- VRMSE reduced ~2.5× (3.94 → ~1.57 average)
-- Correlation time ~+50% longer
-- NRMSE AUC ~44% lower
-- velocity_y improves most dramatically (2.03 → 0.89 NRMSE)
+#### Reporting Layout
+All automated aggregator scripts generate tables that:
+1. Group runs by ablation (Baseline, Pushforward, Temporal Bundling, BPTT, Noise Injection).
+2. Segment performance by model architecture (`FNO`, `UNet`, `CNO`) and parameter size class (e.g., `SMALL`, `BIG`).
+3. Include the **Average Selected Epoch** (`mean ± std`) directly as a column to track early-stopping behavior.
+4. Prepend the official baseline metrics extracted from the source papers (The Well NeurIPS 2024, PDEBench NeurIPS 2022) for direct comparison.
 
 ## Common Pitfalls
 
