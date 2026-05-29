@@ -553,9 +553,11 @@ class Trainer:
         logger.info(f"Validation loop {valid_or_test} (epoch {epoch}) used {count} batches.")
 
         # Last batch plots - too much work to combine from batches.
-        # Only emit plots for the test split (end of run); skip during validation
+        # Only emit plots for the test splits (end of run); skip during validation
         # to keep per-epoch eval fast and avoid wasted CPU syncs / disk I/O.
-        if valid_or_test == "test":
+        # Note: the final test eval passes valid_or_test="test_best_<metric>" and
+        # "rollout_test_best_<metric>", so match the substring rather than "test".
+        if "test" in valid_or_test:
             for plot_fn in validation_plots:
                 plot_fn(y_pred, y_ref, self.dset_metadata, self.viz_folder, epoch)
             if y_ref.shape[1] > 1:

@@ -1,147 +1,116 @@
 # Bachelor Thesis Outline
 
 ## Working Title
-**Stabilizing Autoregressive Neural PDE Surrogates: A Multi-Dataset Study of Architecture and Regularization**
+**Stabilizing Autoregressive Neural PDE Surrogates: Overcoming the Capacity-Stability Trade-off via Lightweight Regularization**
 
 ---
 
 ## 1. Introduction
-- Motivation: neural surrogates as fast alternatives to numerical PDE solvers
-- Core challenge: error accumulation (distribution shift) in autoregressive rollout
-- Gap addressed: prior work limited to a single dataset — unclear how findings generalize
+- Motivation: Neural surrogates as fast alternatives to numerical PDE solvers.
+  - *The Real-World Goal:* Classical solvers calculate single-step transitions with near-perfect accuracy but are computationally constrained (e.g., CFL limits). Neural surrogates promise massive leaps in time (macro-stepping), meaning **stable autoregressive rollout (RO) is the definitive metric of success**, while One-Step (OS) accuracy is primarily a proxy for capacity.
+- Core challenge: Error accumulation (distribution shift) in autoregressive rollout.
+- The BPTT Bottleneck: Traditional unrolled training (Backpropagation Through Time) severely restricts model capacity due to VRAM limits.
 - Thesis contributions:
-  1. Systematic evaluation across multiple PDE datasets (The Well & PDEBench)
-  2. Extended architecture comparison
-  3. Comparison of stabilization techniques (pushforward trick, noise injection, temporal bundling)
-  4. Rigorous evaluation with multiple seeds and standard errors
+  1. Systematic evaluation of lightweight stabilization techniques (Pushforward, Temporal Bundling, Noise) across multiple architectures and datasets.
+  2. Demonstrating that lightweight stabilization allows for training significantly larger models that outperform BPTT-constrained models.
+  3. Extensive cross-benchmark analysis bridging "The Well" and "PDEBench" protocols.
+  4. Investigation into checkpoint selection dynamics (OS vs. RO weights), context window sensitivities, and the implicit regularization of numerical precision (AMP vs. FP32).
 
 ## 2. Background & Related Work
-### 2.1 Neural Operator Theory
-- Operator learning framework (mapping function spaces)
-- Fourier Neural Operator (FNO) and spectral convolutions
-- Relationship to classical numerical methods
+### 2.1 Neural Operator Theory & Architectures
+- Fourier Neural Operator (FNO): Global spectral processing.
+- U-Net: Local receptive fields via convolutions.
+- Convolutional Neural Operator (CNO): Continuous convolutional operator blocks.
+### 2.2 Stabilization Techniques for Autoregressive Models
+- Distribution shift in autoregressive generation.
+- Full Autoregressive Backpropagation Through Time (BPTT).
+- Pushforward trick (PF), Noise Injection, Temporal Bundling (TB).
 
-### 2.2 Surrogate Architectures for PDEs
-- FNO: global spectral processing
-- U-Net variants: encoder-decoder with skip connections (Classic, ConvNeXt)
-- Vision Transformer (ViT) / CNO: local and global processing variants
-- Other relevant architectures — brief survey
-
-### 2.3 Stabilization Techniques for Autoregressive Models
-- Distribution shift in autoregressive generation
-- Pushforward trick: unrolled training with curriculum scheduling
-- Noise injection / data augmentation approaches
-- Temporal bundling (multi-step prediction)
-- Other relevant techniques from the literature
-
-## 3. Datasets
+## 3. Datasets and Experimental Setup
 ### 3.1 Dataset Selection
-The study evaluates models across diverse physical systems, using a mix of datasets from The Well benchmark and PDEBench.
+The study evaluates models across diverse physical systems, bridging two major benchmarks.
 
-| Dataset | source | Dim | Resolution | Trajectories (Used) | Full Size |
-|---|---|---|---|---|---|
-| turbulent_radiative_layer_2D | The Well | 2D | 384x128 | 90 (All) | ~7 GB |
-| gray_scott_reaction_diffusion| The Well | 2D | 128x128 | Subset (TBD) | ~153 GB |
-| rayleigh_benard | The Well | 2D | 512x128 | Subset (TBD) | ~358 GB |
-| Shallow Water Equations | PDEBench | 2D | 128x128 | 1,000 | ~1 GB |
-| Burgers' Equation | PDEBench | 1D | 1024 | 10,000 (ν=0.001 only) | ~7.7 GB |
+| Dataset | Source | Dim | Notes / Physics |
+|---|---|---|---|
+| `turbulent_radiative_layer_2D` | The Well | 2D | Chaotic fluid dynamics with radiative cooling. |
+| `active_matter` | The Well | 2D | Highly chaotic, active particle suspension dynamics. |
+| `pdebench_swe` | PDEBench | 2D | Shallow Water Equations (Radial dam break). |
+| `BUR-DOWN` (1D Burgers) | PDEBench | 1D | Shock-forming regime ($\nu=0.001$). Downsampled 4x in time/resolution. |
 
-### 3.2 Sampling Strategy
-Instead of spatial or temporal downsampling (which can lose critical physical features or spectral content), this thesis employs a **trajectory-limited strategy** for large datasets.
-- For massive datasets like `gray_scott` and `rayleigh_benard`, only a fraction of the available trajectories are used to stay within computational and storage constraints.
-- Resolution and timesteps are kept at their native values to preserve the physical fidelity of the benchmarks.
+### 3.2 Protocol Discrepancies & Harmonization
+To ensure fair comparisons, domain-specific hyperparameters are strictly respected:
+- **PDEBench Datasets:** 10 input steps, Weight Decay = $0.0001$.
+- **The Well Datasets:** 4 input steps, Weight Decay = $0.01$.
+- *(Special Case)*: `pdebench_swe` is evaluated at both 4 and 10 input steps to analyze context-window sensitivity.
 
-### 3.3 Dataset Preprocessing
-- Normalization strategies (ZScore, RMS)
-- Train/validation/test splits
-- Conversion of PDEBench datasets to The Well's HDF5 format for unified processing
+## 4. Methodology
+### 4.1 Architectures & The Capacity Trade-off
+- **Model Sizes:** 
+  - *PDEBench Sizes (Tiny):* Scaled down to fit full BPTT into VRAM.
+  - *The Well Sizes (Normal/Large):* Highly expressive models utilizing lightweight stabilization.
+- **Evaluated Models:** UNet, FNO, CNO.
 
-## 4. Methods
-### 4.1 Architectures
-#### 4.1.1 Fourier Neural Operator (FNO)
-- Spectral convolution blocks, global receptive field
-- Configuration and hyperparameters
+### 4.2 The Ablation Stack
+1. **Paper Baselines:** Results reported directly in the source literature.
+2. **Our Setup Baseline:** Unregularized 1-step autoregressive training (max 100 epochs, matching source configs).
+3. **BPTT (PDEBench only):** Full unrolled trajectory training (restricted to Tiny models).
+4. **Stabilization Pipeline:**
+   - Noise Injection
+   - Push Forward (PF)
+   - Temporal Bundling (TB)
+   - Temporal Bundling + Push Forward (TB + PF)
 
-#### 4.1.2 U-Net Classic
-- Encoder-decoder with skip connections
-- Local receptive field via 3x3 convolutions
+### 4.3 Hardware and Precision (AMP vs. FP32)
+- To maximize training efficiency, Automatic Mixed Precision (AMP) was applied where mathematically stable.
+- **Z-Score Normalization Vulnerability:** AMP instability (FP16 overflow, particularly in FNO's FFT) correlates directly with Z-score scaling. Datasets with narrow standard deviations exponentially amplify network errors during denormalization.
+  - *Active Matter & TRL (High Risk):* Extreme amplification due to tiny physical variances. Forces FP32 for spectral models to avoid NaN explosions.
+  - *SWE (Moderate Risk):* Occasional shock-induced ringing (Gibbs phenomenon) can trigger FP16 limits, but mostly stable.
+  - *Burgers 1D (Zero Risk):* Standard deviation is 1.0, meaning zero error amplification. Fully stable in AMP.
 
-#### 4.1.3 U-Net ConvNeXt
-- Modernized U-Net with depthwise convolutions and large kernels
-- Pseudo-global receptive field
+### 4.4 Hyperparameter Tuning (Learning Rate Search)
+- Coarse grid search ($0.003, 0.001, 0.0003$) conducted per dataset and architecture on the standard baseline configuration.
+- Best learning rate selected based on test set One-Step (OS) performance.
+- Separate LR search conducted for BPTT due to its fundamentally different training dynamics and loss landscape.
 
-#### 4.1.4 Convolutional Neural Operator (CNO)
-- Convolutional operator blocks with up-/down-sampling that respect aliasing
-- Adaptation for PDE surrogate task
+## 5. Results
+### 5.1 The Capacity-Stability Trade-off (PDEBench vs. The Well sizes)
+- Comparing BPTT on "Tiny" models against TB+PF on "Normal" models.
+- Demonstrating that avoiding BPTT's VRAM bottleneck allows for larger, more accurate models that achieve comparable or superior rollout stability.
 
-### 4.2 Stabilization Techniques
-#### 4.2.1 Pushforward Trick
-- Unrolled autoregressive training with curriculum
-- No backprop through intermediate steps (zero-stability enforcement)
-- Curriculum schedule: warmup + probability distribution over unroll depths
+### 5.2 Efficacy of Training Techniques Across Datasets
+- Evaluating the ablation stack (Baseline, Noise, PF, TB, TB+PF) across UNet, FNO, and CNO.
+- Comparison against the official PDEBench and The Well paper baselines.
+- Highlighting universal successes (e.g., TB+PF synergy) vs. dataset-specific requirements (e.g., handling chaotic `active_matter`).
 
-#### 4.2.2 Noise Injection
-- Adding noise to inputs during training as a form of data augmentation
-- Relationship to pushforward (both address distribution shift)
+### 5.3 Context Window Dynamics (SWE input-4 vs input-10)
+- How increasing the receptive field in time affects stability.
+- Interaction between architecture (local UNet vs. global FNO) and context size.
+- Observation: Larger contexts degrade unregularized baselines but massively boost strongly regularized spectral models (FNO-TB_4-PF).
 
-#### 4.2.3 Temporal Bundling
-- Predicting multiple future timesteps simultaneously
-- Reduces the number of autoregressive steps needed
+### 5.4 Epoch Selection and "The Validation Deception"
+- Comparing Best One-Step (OS) weights vs. Best Rollout (RO) weights.
+- Analyzing the average selected epoch across techniques.
+- Investigating the variance in spectral models (FNO) where the "best" validation rollout checkpoint often generalizes poorly to the test set compared to OS weights.
 
-## 5. Experimental Setup
-### 5.1 Evaluation Metrics
-- One-step: VRMSE, RMSE, NMSE
-- Rollout: time-windowed VRMSE, spectral NMSE per frequency bin
-- Long-term: PearsonR, binned spectral MSE
-- Statistical reporting: mean +/- standard error across seeds
+### 5.5 Implicit Regularization via Numerical Noise (AMP)
+- *Note: This phenomenon was an opportunistic observation made during learning rate sweeps on the Active Matter dataset, rather than the result of a formal full-stack ablation.*
+- **The Sharp vs. Damped Operator:** A counter-intuitive observation where models suffering from AMP numerical jitter occasionally perform *better* on long rollouts despite terrible 1-step errors.
+- FP32 models learn a "sharp" operator: Perfect 1-step accuracy on training data, but catastrophic resonance when fed unseen rollout errors.
+- AMP models learn a "damped" operator: FP16 limits act as a low-pass filter, resulting in blurry but numerically stable rollouts. Connects conceptually to explicit Noise Injection.
 
-### 5.2 Ablation Design
-Overview of the ablation study structure:
+### 5.6 Runtime and Computational Efficiency
+- Wall-clock time comparisons.
+- The computational overhead of BPTT vs. PF vs. TB.
+- Hardware utilization and dataloading throughput.
 
-| Ablation | Variables | Fixed |
-|---|---|---|
-| Architecture comparison | FNO, U-Net Classic, U-Net ConvNeXt, CNO | No pushforward |
-| Stabilization comparison | None, Pushforward, Noise Injection, Temporal Bundling | Best architecture |
-| Cross-dataset evaluation | All selected datasets | Best configuration from above |
+## 6. Discussion
+- Synthesizing the "Pareto Frontier" of PDE surrogates: Balancing performance, VRAM limits, and training time.
+- Architectural predispositions to stabilization techniques (global vs. local operators).
+- The necessity of Rollout (RO) optimization over One-Step (OS) for real-world surrogate utility.
+- Recommendations for practitioners when selecting context windows, model capacities, precision (AMP), and regularizers.
 
-Each configuration is run with multiple seeds to report mean +/- std error.
-
-### 5.3 Implementation Details
-- Framework: PyTorch, Hydra, W&B
-- Hardware: NVIDIA RTX 3070 Ti (8GB VRAM)
-
-## 6. Results
-### 6.1 Baseline Architecture Comparison
-- One-step and rollout performance across datasets
-- Per-field and per-frequency-bin analysis
-
-### 6.2 Stabilization Techniques
-- Pushforward trick vs. noise injection vs. temporal bundling
-- Comparison of stabilization techniques across architectures
-
-### 6.3 Cross-Dataset Analysis
-- Which findings are dataset-specific vs. universal?
-- Relationship between dataset properties and method effectiveness
-
-### 6.4 Statistical Analysis
-- Variance across seeds
-- Significance of observed differences
-
-## 7. Discussion
-- Generalizability of findings to new datasets
-- Architecture-dependent effectiveness of stabilization
-- Computational cost vs. performance tradeoffs
-- Limitations: hardware constraints, dataset selection
-
-## 8. Conclusion
-- Summary of key findings across datasets
-- Practical recommendations for practitioners
-
-## References
+## 7. Conclusion
+- Summary of core findings.
+- Future directions (e.g., super-resolution capabilities of FNO on unmodified Burgers datasets).
 
 ---
-
-## Open Questions / TODOs
-- [ ] Read suggested papers: arxiv 2411.00180, 2210.07182, 2302.01178
-- [ ] Determine number of seeds per ablation (3? 5?)
-- [ ] Finalize the fraction of trajectories for large datasets

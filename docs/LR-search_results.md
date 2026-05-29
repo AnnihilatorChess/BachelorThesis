@@ -45,3 +45,5 @@ We use batch_size=12
 
 1. UNet: 0.003 (0.001 also good, better for rollout even)
 2. FNO: 0.003 (Catastrophic for all LRs, all get worse over time)
+3. FNO (FP32): 0.001 (all really close, interestingly worse on rollout than the catastrophic AMP)
+4. CNO: 0.001 all others diverge
