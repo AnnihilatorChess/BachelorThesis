@@ -96,8 +96,8 @@ def choose_file(files, ds, am_file=None):
 
         def activity(path):
             b = os.path.basename(path)
-            z = re.search(r"zeta_(-?[\d.]+)", b)
-            a = re.search(r"alpha_(-?[\d.]+)", b)
+            z = re.search(r"zeta_(-?\d+(?:\.\d+)?)", b)
+            a = re.search(r"alpha_(-?\d+(?:\.\d+)?)", b)
             zeta = float(z.group(1)) if z else 0.0
             alpha = float(a.group(1)) if a else 0.0
             return (zeta, -alpha)  # high zeta, most negative alpha = most active
