@@ -47,7 +47,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 DATASETS = [
     dict(label="turbulent_radiative_layer_2D", source="local",
          name="turbulent_radiative_layer_2D", fields=["density", "pressure"],
-         cmap="inferno", is_1d=False, transpose=True),  # 128x384 -> long axis vertical
+         cmap="inferno", is_1d=False, transpose=False),  # 128x384 -> long axis vertical
     dict(label="active_matter", source="publicdata",
          name="active_matter", fields=["concentration"],
          cmap="viridis", is_1d=False),
