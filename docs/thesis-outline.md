@@ -43,17 +43,23 @@ To ensure fair comparisons, domain-specific hyperparameters are strictly respect
 - **The Well Datasets:** 4 input steps, Weight Decay = $0.01$.
 - *(Special Case)*: `pdebench_swe` is evaluated at both 4 and 10 input steps to analyze context-window sensitivity.
 
+Beyond these per-dataset knobs, our overall evaluation setup follows **The Well**, which differs from **PDEBench** in three respects:
+
+- **Data split and model selection.** We use a roughly **80/10/10** train/validation/test split for every dataset (matching The Well), keeping a *held-out* test set that is never used for checkpoint selection. PDEBench uses a **90/10** split, selects the best checkpoint by its rollout validation score on the 10% partition, and then reports the final score on that *same* partition. Because the model is both selected and evaluated on the same data, PDEBench's reported numbers are slightly optimistic, whereas our held-out test split removes this selection bias.
+- **Training budget.** Both source papers train for up to **500 epochs** per (model, dataset); The Well additionally caps each run at a **12-hour wall-clock budget on a single NVIDIA H100** (whichever limit is hit first). We train for **100 epochs** per run as a deliberate compute-budget deviation, so our models are mildly undertrained relative to the source baselines.
+- **Learning-rate search.** The Well performs a per-(model, dataset) learning-rate sweep, which we mirror with our own coarse LR search. For PDEBench we could not find evidence of a learning-rate search, so we treat their published learning rates as fixed.
+
 ## 4. Methodology
 ### 4.1 Architectures & The Capacity Trade-off
 - **Model Sizes:** 
-  - *PDEBench Sizes (Tiny):* Scaled down to fit full BPTT into VRAM.
-  - *The Well Sizes (Normal/Large):* Highly expressive models utilizing lightweight stabilization.
-- **Evaluated Models:** UNet, FNO, CNO.
+  - *PDEBench Sizes (Tiny):* Scaled down to fit full BPTT into VRAM. Trained for **FNO and UNet only** (CNO has no PDEBench baseline to reproduce) and **only on SWE and BUR**, the two datasets for which we hold both a small and a large scale.
+  - *The Well Sizes (Normal/Large):* Highly expressive models utilizing lightweight stabilization. Trained for all three architectures on all four datasets.
+- **Evaluated Models:** UNet, FNO, CNO (large scale); UNet, FNO (small/BPTT scale).
 
 ### 4.2 The Ablation Stack
 1. **Paper Baselines:** Results reported directly in the source literature.
 2. **Our Setup Baseline:** Unregularized 1-step autoregressive training (max 100 epochs, matching source configs).
-3. **BPTT (PDEBench only):** Full unrolled trajectory training (restricted to Tiny models).
+3. **BPTT (PDEBench only):** Full unrolled trajectory training (restricted to Tiny FNO/UNet models on SWE and BUR; CNO is excluded as it has no PDEBench baseline).
 4. **Stabilization Pipeline:**
    - Noise Injection
    - Push Forward (PF)
@@ -74,8 +80,10 @@ To ensure fair comparisons, domain-specific hyperparameters are strictly respect
 
 ## 5. Results
 ### 5.1 The Capacity-Stability Trade-off (PDEBench vs. The Well sizes)
+- **Scope:** confined to the **PDEBench datasets (SWE, BUR)** and to **FNO and UNet** — the only configurations for which both a small (BPTT-capacity) and a large weight set exist and a published BPTT baseline can be reproduced. CNO and the chaotic Well datasets (TRL, AM) are trained only at the large scale.
 - Comparing BPTT on "Tiny" models against TB+PF on "Normal" models.
 - Demonstrating that avoiding BPTT's VRAM bottleneck allows for larger, more accurate models that achieve comparable or superior rollout stability.
+- **Limitation / future work:** because capacity is varied only on the simpler PDEs, the capacity-stability result is not yet established on chaotic dynamics, where intrinsic (Lyapunov) error growth may blunt the benefit of added capacity. A small-scale FNO/UNet run on TRL — planned once the AM runs complete — would test whether the trade-off extends to the chaotic regime, without requiring an (intractable) full-BPTT run on The Well.
 
 ### 5.2 Efficacy of Training Techniques Across Datasets
 - Evaluating the ablation stack (Baseline, Noise, PF, TB, TB+PF) across UNet, FNO, and CNO.

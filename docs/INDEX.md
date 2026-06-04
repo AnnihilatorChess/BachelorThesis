@@ -14,6 +14,12 @@ This index organizes all project guidance and knowledge resources for quick acce
   - Dataset selection (TRL 2D, PDEBench SWE, Gray-Scott, Rayleigh-Benard, Burgers 1D)
   - Methods: architectures (FNO, U-Net, ViT), stabilization techniques (pushforward, noise injection, temporal bundling)
   - Experimental setup and ablation design
+- **[story-summary.md](story-summary.md)** — Institute-mandated "story summary" for **Appendix A**: ten standardized Q&A (central question, importance, methods, results, broader impact) condensing the thesis into a tightened, plain-but-technical narrative.
+
+## Literature & References
+
+- **[related-work-bibliography.md](related-work-bibliography.md)** — **Annotated bibliography** for §1 Introduction and §2 Background & Related Work (neural operators, stabilization techniques, benchmarks, weather/foundation/diffusion models), mapped to thesis sections, plus a synthesis of how neural PDE surrogates are trained today and a list of claims to hedge or avoid. Compiled via the `deep-research` workflow + manual verification.
+- **[references.bib](references.bib)** — BibTeX for every citation in the bibliography (~29 entries), ready to drop into the thesis LaTeX.
 
 ## Models
 
@@ -53,6 +59,9 @@ This index organizes all project guidance and knowledge resources for quick acce
 docs/
 ├── INDEX.md                       # This file
 ├── thesis-outline.md              # Thesis scope
+├── story-summary.md               # Appendix A story summary (Q&A)
+├── related-work-bibliography.md   # Annotated bibliography + training-practice synthesis
+├── references.bib                 # BibTeX for all related-work citations
 ├── extended-metrics.md            # Evaluation reference
 ├── benchmark-comparability.md     # The Well vs PDEBench vs us
 ├── bptt_pdebench_audit.md         # PDEBench-protocol BPTT audit + hardware notes
