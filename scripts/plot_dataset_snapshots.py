@@ -179,34 +179,54 @@ def main():
 
     bases = {"local": args.local_base, "publicdata": args.publicdata_base}
 
-    n_rows = len(DATASETS)
-    fig, axes = plt.subplots(
-        n_rows, 4,
-        figsize=(4 * args.panel, n_rows * args.panel),
-        gridspec_kw=dict(wspace=0.04, hspace=0.04),
-    )
-
-    for r, ds in enumerate(DATASETS):
+    # --- Phase 1: load every row's data up front (row heights depend on it) ---
+    rows = []
+    for ds in DATASETS:
         base = bases[ds["source"]]
         files = find_files(base, ds["name"])
-        row_axes = axes[r]
-
         if not files:
-            for ax in row_axes:
-                ax.set_xticks([]); ax.set_yticks([])
-            row_axes[0].text(0.02, 0.5, f"{ds['label']}: NOT FOUND under {base!r}",
-                             transform=row_axes[0].transAxes, color="red",
-                             va="center", fontsize=9)
             print(f"[WARN] {ds['label']}: no files under {os.path.join(base, ds['name'])}")
+            rows.append(dict(ds=ds, found=False, snaps=None))
             continue
-
         path = choose_file(files, ds, args.am_file)
         snaps, field_label = load_snapshots(path, ds["fields"], args.traj)
         if ds.get("transpose"):
             snaps = [s.T for s in snaps]
         print(f"[ok]   {ds['label']:32s} field={field_label:24s} "
               f"shape={snaps[0].shape} file={os.path.basename(path)}")
+        rows.append(dict(ds=ds, found=True, snaps=snaps))
 
+    # Row height = image aspect (rows/cols) so each cell fits its image exactly
+    # with no internal padding. In "auto" mode every row is equal height and the
+    # image stretches to fill. Either way there is no whitespace between rows.
+    def height_ratio(row):
+        if args.aspect != "equal" or not row["found"] or row["ds"]["is_1d"]:
+            return 1.0
+        h, w = row["snaps"][0].shape[:2]
+        return h / w
+
+    ratios = [height_ratio(r) for r in rows]
+    n_rows = len(rows)
+    fig, axes = plt.subplots(
+        n_rows, 4,
+        figsize=(4 * args.panel, args.panel * sum(ratios)),
+        gridspec_kw=dict(wspace=0.04, hspace=0.04, height_ratios=ratios),
+    )
+
+    # --- Phase 2: render ---
+    for r, row in enumerate(rows):
+        ds = row["ds"]
+        row_axes = axes[r]
+        for ax in row_axes:
+            ax.set_xticks([]); ax.set_yticks([])
+
+        if not row["found"]:
+            row_axes[0].text(0.02, 0.5, f"{ds['label']}: NOT FOUND",
+                             transform=row_axes[0].transAxes, color="red",
+                             va="center", fontsize=9)
+            continue
+
+        snaps = row["snaps"]
         if ds["is_1d"]:
             ymin = min(float(s.min()) for s in snaps)
             ymax = max(float(s.max()) for s in snaps)
@@ -217,7 +237,6 @@ def main():
                         color=ds["line_color"], lw=1.4)
                 ax.set_ylim(ymin - pad, ymax + pad)
                 ax.set_xlim(0, 1)
-                ax.set_xticks([]); ax.set_yticks([])
         else:
             if args.norm == "row":
                 stacked = np.concatenate([s.ravel() for s in snaps])
@@ -225,16 +244,15 @@ def main():
                 ranges = [(lo, hi)] * len(snaps)
             else:  # per-panel scaling reveals structure when amplitude decays
                 ranges = [tuple(np.percentile(s.ravel(), args.pct)) for s in snaps]
+            # aspect="auto" fills the cell; proportions are handled by height_ratios
             for c, s in enumerate(snaps):
                 ax = row_axes[c]
                 vmin, vmax = ranges[c]
                 ax.imshow(s, cmap=ds["cmap"], vmin=vmin, vmax=vmax,
-                          aspect=args.aspect, origin="lower", interpolation="nearest")
-                ax.set_xticks([]); ax.set_yticks([])
+                          aspect="auto", origin="lower", interpolation="nearest")
 
         if args.labels:
-            row_axes[0].set_ylabel(ds["label"].replace("_", r"\_") if False
-                                   else ds["label"], fontsize=9)
+            row_axes[0].set_ylabel(ds["label"], fontsize=9)
 
     if args.labels:
         for c, title in enumerate(COL_TITLES):
