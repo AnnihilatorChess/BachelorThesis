@@ -29,6 +29,7 @@ Add --labels for row/column labels.
 import argparse
 import glob
 import os
+import re
 
 import h5py
 import numpy as np
@@ -46,7 +47,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 DATASETS = [
     dict(label="turbulent_radiative_layer_2D", source="local",
          name="turbulent_radiative_layer_2D", fields=["density", "pressure"],
-         cmap="inferno", is_1d=False),
+         cmap="inferno", is_1d=False, transpose=True),  # 128x384 -> long axis vertical
     dict(label="active_matter", source="publicdata",
          name="active_matter", fields=["concentration"],
          cmap="viridis", is_1d=False),
@@ -79,6 +80,32 @@ def find_files(base, name):
     return []
 
 
+def choose_file(files, ds, am_file=None):
+    """Pick which HDF5 file (parameter set) to visualise.
+
+    For active_matter the files are one-per-parameter-set; the alphabetically
+    first one (zeta_1.0/alpha_-1.0) is the *least* active and homogenises. We
+    instead pick the most active set (highest zeta, then most negative alpha),
+    or honour an explicit --am-file substring.
+    """
+    if ds["name"] == "active_matter" and len(files) > 1:
+        if am_file:
+            hits = [f for f in files if am_file in os.path.basename(f)]
+            if hits:
+                return hits[0]
+
+        def activity(path):
+            b = os.path.basename(path)
+            z = re.search(r"zeta_(-?[\d.]+)", b)
+            a = re.search(r"alpha_(-?[\d.]+)", b)
+            zeta = float(z.group(1)) if z else 0.0
+            alpha = float(a.group(1)) if a else 0.0
+            return (zeta, -alpha)  # high zeta, most negative alpha = most active
+
+        return max(files, key=activity)
+    return files[0]
+
+
 def pick_field(f, preferred):
     """Return (group, field_name) for the first preferred field, else the first."""
     for order in ("t0_fields", "t1_fields", "t2_fields"):
@@ -108,9 +135,9 @@ def reduce_components(snap):
     return snap
 
 
-def load_snapshots(files, preferred, traj):
+def load_snapshots(path, preferred, traj):
     """Return (snapshots, field_label) for one trajectory at the 4 time indices."""
-    with h5py.File(files[0], "r") as f:
+    with h5py.File(path, "r") as f:
         order, name = pick_field(f, preferred)
         dset = f[order][name]
         sample_varying = bool(dset.attrs.get("sample_varying", True))
@@ -138,6 +165,14 @@ def main():
     ap.add_argument("--panel", type=float, default=2.6, help="panel size in inches")
     ap.add_argument("--pct", type=float, nargs=2, default=(1.0, 99.0),
                     help="percentile clip for image colour range")
+    ap.add_argument("--norm", choices=["row", "panel"], default="row",
+                    help="colour scale shared across a row (default) or per panel")
+    ap.add_argument("--aspect", choices=["auto", "equal"], default="auto",
+                    help="'auto' fills each cell (uniform grid); 'equal' keeps "
+                         "physical proportions (e.g. TRL stays 1:3)")
+    ap.add_argument("--am-file", default=None,
+                    help="substring selecting the active_matter parameter file "
+                         "(default: highest-activity set)")
     ap.add_argument("--labels", action="store_true",
                     help="draw row (dataset) and column (time) labels")
     args = ap.parse_args()
@@ -165,9 +200,12 @@ def main():
             print(f"[WARN] {ds['label']}: no files under {os.path.join(base, ds['name'])}")
             continue
 
-        snaps, field_label = load_snapshots(files, ds["fields"], args.traj)
+        path = choose_file(files, ds, args.am_file)
+        snaps, field_label = load_snapshots(path, ds["fields"], args.traj)
+        if ds.get("transpose"):
+            snaps = [s.T for s in snaps]
         print(f"[ok]   {ds['label']:32s} field={field_label:24s} "
-              f"shape={snaps[0].shape} file={os.path.basename(files[0])}")
+              f"shape={snaps[0].shape} file={os.path.basename(path)}")
 
         if ds["is_1d"]:
             ymin = min(float(s.min()) for s in snaps)
@@ -181,12 +219,17 @@ def main():
                 ax.set_xlim(0, 1)
                 ax.set_xticks([]); ax.set_yticks([])
         else:
-            stacked = np.concatenate([s.ravel() for s in snaps])
-            vmin, vmax = np.percentile(stacked, args.pct)
+            if args.norm == "row":
+                stacked = np.concatenate([s.ravel() for s in snaps])
+                lo, hi = np.percentile(stacked, args.pct)
+                ranges = [(lo, hi)] * len(snaps)
+            else:  # per-panel scaling reveals structure when amplitude decays
+                ranges = [tuple(np.percentile(s.ravel(), args.pct)) for s in snaps]
             for c, s in enumerate(snaps):
                 ax = row_axes[c]
+                vmin, vmax = ranges[c]
                 ax.imshow(s, cmap=ds["cmap"], vmin=vmin, vmax=vmax,
-                          aspect="auto", origin="lower", interpolation="nearest")
+                          aspect=args.aspect, origin="lower", interpolation="nearest")
                 ax.set_xticks([]); ax.set_yticks([])
 
         if args.labels:
