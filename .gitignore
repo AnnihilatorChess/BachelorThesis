@@ -91,7 +91,7 @@ vendor/
 
 *.json
 
-/docs
+#/docs
 /datasets
 /papers
 # Ignore environment-specific files
