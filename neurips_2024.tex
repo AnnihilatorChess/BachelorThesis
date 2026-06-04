@@ -99,7 +99,54 @@ We perform our experiments on four datasets from The Well and PDEBench. Our aim 
 \end{table}
 
 \subsection{Active Matter}
-The Active Matter (AM) Dataset (\cite{maddu2024learning}) simulates biologically active matter immersed in a fluid and is governed by, <insert equations>
+The Active Matter (AM) dataset from The Well \citep{ohana2024well, maddu2024learning} simulates a dense suspension of active, rod-like particles in a viscous fluid, where particle activity and alignment drive chaotic large-scale flows.
+
+The dynamics follow a kinetic theory in which the particle distribution function $\Psi(\mathbf{x}, \mathbf{p}, t)$, defined over position $\mathbf{x}$ and orientation $\mathbf{p}$ with $|\mathbf{p}| = 1$, is advected by a Stokes flow:
+\begin{align}
+  \frac{\partial \Psi}{\partial t} + \nabla_{\mathbf{x}} \cdot (\dot{\mathbf{x}}\,\Psi) + \nabla_{\mathbf{p}} \cdot (\dot{\mathbf{p}}\,\Psi) &= 0, \\
+  \dot{\mathbf{x}} &= \mathbf{u} - d_T\, \nabla_{\mathbf{x}} \log \Psi, \\
+  \dot{\mathbf{p}} &= (\mathbf{I} - \mathbf{p}\mathbf{p}) \cdot (\nabla \mathbf{u} + 2\zeta \mathsf{D}) \cdot \mathbf{p} - d_R\, \nabla_{\mathbf{p}} \log \Psi, \\
+  -\Delta \mathbf{u} + \nabla P &= \nabla \cdot \boldsymbol{\Sigma}, \qquad \nabla \cdot \mathbf{u} = 0, \\
+  \boldsymbol{\Sigma} &= \alpha \mathsf{D} + \beta\, \mathsf{S}\!:\!\mathsf{E} - 2\zeta\beta\,(\mathsf{D}\cdot\mathsf{D} - \mathsf{S}\!:\!\mathsf{D}).
+\end{align}
+Here $\mathbf{u}$ is the fluid velocity, $P$ the pressure, and $\boldsymbol{\Sigma}$ the active stress tensor. The orientation moments $\mathsf{D} = \langle \mathbf{p}\mathbf{p} \rangle$ and $\mathsf{S} = \langle \mathbf{p}\mathbf{p}\mathbf{p}\mathbf{p} \rangle$ are the second and fourth moments of $\Psi$, $\mathsf{E} = \tfrac{1}{2}(\nabla \mathbf{u} + \nabla \mathbf{u}^{\top})$ is the rate-of-strain tensor, and $\mathbf{I}$ is the identity. The constants $d_T$ and $d_R$ are translational and rotational diffusion coefficients. The simulation records the low-order moments of $\Psi$, namely the concentration $c = \langle 1 \rangle$, the velocity $\mathbf{u}$, the orientation tensor $\mathsf{D}$, and the strain-rate tensor $\mathsf{E}$, which together form the 11 channels listed in Table~\ref{tab:datasets}.
+
+The domain is a periodic square of side $L = 10$ on a $256 \times 256$ grid, and each trajectory holds 81 snapshots. Two parameters are varied: the active dipole strength $\alpha \in \{-1, -2, -3, -4, -5\}$ and the alignment strength $\zeta \in \{1, 3, 5, 7, 9, 11, 13, 15, 17\}$, while the packing parameter is fixed at $\beta = 0.8$. The resulting 45 parameter pairs, each simulated from several random initial conditions, make up the 360 trajectories of the dataset.
+
+\subsection{Turbulent Radiative Layer}
+The Turbulent Radiative Layer (TRL) dataset from The Well \citep{ohana2024well, fielding2020multiphase} simulates the turbulent mixing layer that forms between cold dense gas and hot dilute gas, where radiative cooling competes with turbulent mixing.
+
+The dynamics are governed by the compressible Euler equations with a radiative cooling source term:
+\begin{align}
+  \frac{\partial \rho}{\partial t} + \nabla \cdot (\rho \mathbf{v}) &= 0, \\
+  \frac{\partial (\rho \mathbf{v})}{\partial t} + \nabla \cdot (\rho\, \mathbf{v} \otimes \mathbf{v} + P\mathbf{I}) &= 0, \\
+  \frac{\partial E}{\partial t} + \nabla \cdot \big((E + P)\mathbf{v}\big) &= -\frac{E}{t_{\mathrm{cool}}}, \qquad E = \frac{P}{\gamma - 1},
+\end{align}
+where $\rho$ is the gas density, $\mathbf{v}$ the velocity, $P$ the pressure, and $E$ the energy density with adiabatic index $\gamma = 5/3$. The source term removes thermal energy on a cooling timescale $t_{\mathrm{cool}}$ that is shortest at intermediate temperatures, so freshly mixed gas cools rapidly and rejoins the cold phase.
+
+The domain is Cartesian with $x \in [-0.5, 0.5]$ and $y \in [-1, 2]$, discretised on a $128 \times 384$ grid with 101 snapshots per trajectory. The boundary conditions are periodic in $x$ and zero-gradient (outflow) in $y$. The cooling time is the varied parameter, $t_{\mathrm{cool}} \in \{0.03, 0.06, 0.1, 0.18, 0.32, 0.56, 1.0, 1.78, 3.16\}$, and each of these 9 values is simulated with 10 random seeds, giving 90 trajectories. The recorded fields are the density, the pressure, and the two velocity components (4 channels).
+
+\subsection{Shallow Water Equation}
+The Shallow Water Equation (SWE) dataset from PDEBench \citep{takamoto2022pdebench} simulates a two-dimensional radial dam break, in which a raised circular column of water collapses and spreads outward as shallow-water waves.
+
+The dynamics follow the 2D shallow water equations:
+\begin{align}
+  \frac{\partial h}{\partial t} + \frac{\partial (hu)}{\partial x} + \frac{\partial (hv)}{\partial y} &= 0, \\
+  \frac{\partial (hu)}{\partial t} + \frac{\partial}{\partial x}\!\left(u^2 h + \tfrac{1}{2} g_r h^2\right) &= -g_r h\, \frac{\partial b}{\partial x}, \\
+  \frac{\partial (hv)}{\partial t} + \frac{\partial}{\partial y}\!\left(v^2 h + \tfrac{1}{2} g_r h^2\right) &= -g_r h\, \frac{\partial b}{\partial y},
+\end{align}
+where $h$ is the water depth, $(u, v)$ the horizontal velocities, $b$ the bathymetry, and $g_r$ the gravitational acceleration. The bottom is flat, so $b = 0$ and the source terms vanish, and $g_r = 1$. Each simulation starts from a radial dam break with $h(0, x, y) = 2.0$ inside a central circle of radius $r$ and $h = 1.0$ outside, where the dam radius is sampled per trajectory from $r \sim \mathcal{U}(0.3, 0.7)$. The domain is $[-2.5, 2.5]^2$ with reflective (Neumann) walls, discretised on a $128 \times 128$ grid with 101 snapshots. PDEBench stores only the water depth $h$, so the dataset has a single field, and we use all 1000 trajectories.
+
+\subsection{Burgers'}
+The Burgers' dataset from PDEBench \citep{takamoto2022pdebench} simulates the one-dimensional viscous Burgers equation, a canonical model in which nonlinear advection is balanced by diffusion and develops sharp fronts at low viscosity.
+
+The governing equation is
+\begin{equation}
+  \frac{\partial u}{\partial t} + \frac{\partial}{\partial x}\!\left(\frac{u^2}{2}\right) = \frac{\nu}{\pi}\,\frac{\partial^2 u}{\partial x^2}, \qquad x \in (0, 1),\; t \in (0, 2],
+\end{equation}
+where $u(t, x)$ is the velocity field and $\nu$ is the diffusion coefficient. We use the low-viscosity setting $\nu = 0.001$, which produces shock-like fronts and makes the dynamics hard to roll out. The boundary conditions are periodic, and each of the 10{,}000 initial conditions is a superposition of sinusoidal modes with random amplitudes and phases.
+
+PDEBench provides this dataset at a spatial resolution of 1024 points with 201 time steps. Following PDEBench, we subsample it by a factor of 4 in space (1024 to 256 points) and by a factor of 5 in time (201 to 41 steps). We adopt the same reduction so that our results remain directly comparable to the FNO and U-Net baselines reported by PDEBench, which are trained and evaluated on the identically reduced data.
 
 \section{Methodology}
 
