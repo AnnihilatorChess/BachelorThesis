@@ -1,0 +1,137 @@
+\documentclass{article}
+
+% if you need to pass options to natbib, use, e.g.:
+%     \PassOptionsToPackage{numbers, compress}{natbib}
+% before loading neurips_2024
+
+
+
+% ready for submission
+%\usepackage{neurips_2024}
+
+
+% to compile a preprint version, e.g., for submission to arXiv, add add the
+% [preprint] option:
+\usepackage[preprint]{neurips_2024}
+
+
+% to compile a camera-ready version, add the [final] option, e.g.:
+%\usepackage[final]{neurips_2024}
+
+
+% to avoid loading the natbib package, add option nonatbib:
+%    \usepackage[nonatbib]{neurips_2024}
+
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+\usepackage{amsmath}
+\usepackage{graphicx}
+
+
+\title{TBD}
+
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+
+\author{%
+  Simon ~Danninger\\
+  Institute for Machine Learning\\
+  Johannes Kepler University\\
+  Linz, Austria \\
+  \texttt{simon.danninger64@gmail.com} \\
+}
+
+
+\begin{document}
+
+
+\maketitle
+
+
+\begin{abstract}
+
+\end{abstract}
+
+
+\section{Introduction}
+
+
+
+
+\section{Background \& Related Work}
+
+
+\section{Datasets and Experimental Setup}
+We perform our experiments on four datasets from The Well and PDEBench. Our aim is to cover diverse time dependent physics in one and two dimensions and we restrict ourselves to cartesian domains. An Overview of the datasets is given in Table \ref{tab:datasets}.
+
+
+\begin{table}[h]
+  \centering
+
+  \begin{tabular}{llccccc}
+    \toprule
+    Dataset & Source & $N_d$ & Resolution & Fields & $N_\mathrm{steps}$ & $N_\mathrm{samples}$ \\
+    \midrule
+    \texttt{Active Matter}                  & The Well & 2 & $256\times256$ & 11 & 81  & 360   \\
+    \texttt{Turbulent Radiative Layer} & The Well & 2 & $128\times384$ & 4  & 101 & 90    \\
+    \texttt{Shallow Water Equation}                   & PDEBench & 2 & $128\times128$ & 1  & 101 & 1000  \\
+    \texttt{Burgers'} & PDEBench & 1 & $256$          & 1  & 41  & 10000 \\
+    \bottomrule
+  \end{tabular}
+  \vspace{0.4em}
+    \caption{Overview of datasets. $N_d$ denotes the spatial dimensionality, \emph{Resolution} the per-snapshot grid, \emph{Fields} the number of physical channels, $N_\mathrm{steps}$ the number of time-steps per trajectory, and $N_\mathrm{samples}$ the number of trajectories.}
+  \label{tab:datasets}
+\end{table}
+
+\subsection{Active Matter}
+The Active Matter (AM) Dataset (\cite{maddu2024learning}) simulates biologically active matter immersed in a fluid and is governed by, <insert equations>
+
+\section{Methodology}
+
+
+\section{Results}
+
+
+\section{Discussion}
+
+\section{Conclusion}
+
+{
+\small
+
+\bibliographystyle{abbrv}
+\bibliography{references}
+}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newpage
+
+\appendix
+
+\section{Appendix A}
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+
+\end{document}
