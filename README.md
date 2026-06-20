@@ -1,12 +1,12 @@
 # Stabilizing Autoregressive Neural PDE Surrogates
 
-Codebase for the Bachelor Thesis: **"Stabilizing Autoregressive Neural PDE Surrogates: Overcoming the Capacity-Stability Trade-off via Lightweight Regularization"** (Johannes Kepler University Linz).
+Codebase and thesis source for the Bachelor's Thesis **"Stabilizing Autoregressive Neural PDE Surrogates: A Cross-Benchmark Ablation and Capacity Trade-off Study"** (Johannes Kepler University Linz).
 
-This repository evaluates lightweight stabilization techniques (Temporal Bundling, Pushforward, Noise Injection) across diverse PDE datasets to prevent autoregressive error accumulation. The core contribution demonstrates that these stabilization methods allow for the training of large, highly expressive models that significantly outperform VRAM-constrained models trained with full Backpropagation Through Time (BPTT).
+This repository evaluates lightweight stabilization techniques (Temporal Bundling, Pushforward, Noise Injection, and their combination) across diverse PDE datasets and architectures to prevent autoregressive error accumulation. The central findings are that these techniques reliably improve rollout accuracy at close to one-step training cost, and that the memory they save relative to full Backpropagation Through Time (BPTT) can be reinvested into larger models that outperform the VRAM-constrained models BPTT is restricted to on the simpler PDEs.
 
 ## Fork & Attribution
 
-This repository is a fork of the official [The Well](https://github.com/PolymathicAI/the_well) benchmark and integrates evaluation methodologies, model scales, and datasets from [PDEBench](https://github.com/pdebench/PDEBench). We gratefully acknowledge the authors of both benchmarks for open-sourcing their incredible tools and data.
+This repository is a fork of the official [The Well](https://github.com/PolymathicAI/the_well) benchmark and integrates evaluation methodologies, model scales, and datasets from [PDEBench](https://github.com/pdebench/PDEBench). We gratefully acknowledge the authors of both benchmarks for open-sourcing their tools and data.
 
 ### References and Citations
 
@@ -23,7 +23,7 @@ This repository is a fork of the official [The Well](https://github.com/Polymath
 ### Evaluated Datasets
 The experimental stack bridges chaotic physical systems from The Well and shock-forming equations from PDEBench (converted to The Well's unified HDF5 format):
 - **The Well**: `turbulent_radiative_layer_2D`, `active_matter`
-- **PDEBench**: `pdebench_swe` (Shallow Water Equations), `pdebench_1d_burgers_pdebench` (1D Burgers, downsampled)
+- **PDEBench**: `pdebench_swe` (Shallow Water Equations), `pdebench_1d_burgers` (1D Burgers, downsampled)
 
 ### Evaluated Architectures
 - **Fourier Neural Operator (FNO)** (Global spectral processing)
@@ -39,8 +39,10 @@ The environment mirrors The Well's original setup. We highly recommend using a C
 ```bash
 git clone https://github.com/AnnihilatorChess/BachelorThesis.git
 cd BachelorThesis
-pip install -e .
+pip install -e ".[benchmark]"
 ```
+
+The `benchmark` extra pulls in the training dependencies (Hydra, Weights & Biases, neuraloperator, timm, torch_harmonics). Python 3.10+ is required.
 
 > **Note on CNO:** It is highly recommended to use the compiled version of the Convolutional Neural Operator (CNO) for optimal performance. Compiling the CNO requires additional system-level libraries. Please refer to the official [PDEBench repository](https://github.com/pdebench/PDEBench) for more information and detailed installation instructions.
 
@@ -53,11 +55,20 @@ the-well-download --base-path datasets/ --dataset turbulent_radiative_layer_2D
 ```
 
 **PDEBench Datasets:**
-PDEBench datasets must be downloaded from their [official repository/website](https://github.com/pdebench/PDEBench). Once downloaded, use the provided conversion scripts to format them into The Well's unified HDF5 structure:
+PDEBench datasets are not distributed in The Well's format, so they must be downloaded from the [official PDEBench data repository](https://github.com/pdebench/PDEBench) and converted into The Well's unified HDF5 layout before training. This repository ships two self-contained conversion scripts for that (they only require `h5py`, `numpy`, and `pyyaml`).
+
+*Shallow Water Equations:* download the radial-dam-break file `2D_rdb_NA_NA.h5`, place it at `datasets/PDEBench/2D_SWE/2D_rdb_NA_NA.h5`, then run:
 ```bash
-python scripts/convert_pdebench_swe.py --input_path path/to/swe.h5 --output_path datasets/pdebench_swe
+python scripts/convert_pdebench_swe.py        # writes datasets/pdebench_swe/
 ```
-*(Check the `scripts/` directory for other conversion utilities like `convert_pdebench_1d_burgers.py`)*
+
+*1D Burgers (low viscosity):* download `1D_Burgers_Sols_Nu0.001.hdf5`, place it at `datasets/PDEBench/1D_Burgers/1D_Burgers_Sols_Nu0.001.hdf5`, then run:
+```bash
+python scripts/convert_pdebench_1d_burgers.py             # full resolution -> datasets/pdebench_1d_burgers/
+python scripts/convert_pdebench_1d_burgers.py --variant pdebench   # subsampled 4x in space, 5x in time -> datasets/pdebench_1d_burgers_pdebench/
+```
+
+Both scripts create the `data/{train,valid,test}/` split layout and a `stats.yaml` of normalization statistics that the dataloaders expect. The thesis uses the PDEBench-protocol (downsampled) Burgers variant to stay comparable to PDEBench. Pass `--help` to either script for the splitting and subsampling options.
 
 ---
 
@@ -67,21 +78,21 @@ All experiments are driven by **Hydra**. The configurations are deeply nested, b
 
 | Parameter | Description |
 |---|---|
-| `experiment=` | Selects the model and dataset baseline (e.g., `fno`, `unet_classic`, `cno`). Use `_pdebench` variants for the downscaled "Tiny" models. |
+| `experiment=` | Selects the model and dataset baseline (e.g., `fno`, `unet_classic`, `cno`). Use `_pdebench` variants for the downscaled "small" models. |
 | `data=` | Selects the dataset to train on (e.g., `turbulent_radiative_layer_2D`, `pdebench_swe`). |
 | `temporal_bundle_size=` | Set to > 1 to predict multiple timesteps in a single forward pass (Temporal Bundling). Default is 1. |
 | `trainer.pushforward=` | `True` enables unrolled autoregressive training with curriculum learning. |
 | `trainer.noise_injection=` | `True` adds Gaussian noise to inputs. Must be used with `trainer.noise_std=...` |
-| `trainer=bptt` | Switches the trainer to Full Backpropagation Through Time (use only with Tiny models). |
+| `trainer=bptt` | Switches the trainer to full Backpropagation Through Time (use only with the small models). |
 | `seed=` | Sets the global RNG seed for reproducibility. |
 
 ---
 
 ## Usage
 
-All training experiments are managed via **Hydra** and execute from the `the_well/benchmark` directory. 
+All training experiments are managed via **Hydra** and execute from the `the_well/benchmark` directory.
 
-### 1. Standard Training (Our Baseline)
+### 1. Standard Training (One-Step Baseline)
 Train a standard 1-step autoregressive model without stabilization:
 ```bash
 cd the_well/benchmark
@@ -112,17 +123,17 @@ You can enable various stabilization techniques to prevent error accumulation on
   ```
 
 ### 3. BPTT on PDEBench Models
-To replicate the PDEBench training methodology (using heavily downscaled "Tiny" models to fit full Backpropagation Through Time into VRAM):
+To replicate the PDEBench training methodology (using heavily downscaled "small" models so full Backpropagation Through Time fits into VRAM):
 ```bash
 python train.py experiment=fno_pdebench server=local data=pdebench_swe trainer=bptt
 ```
 
 ---
 
-## Documentation and Analysis
+## Thesis
 
-For detailed insights into the experimental design, performance metrics, and automated evaluation aggregations, please refer to the `docs/` folder:
+The written thesis lives in this repository as LaTeX source:
 
-- `docs/thesis-outline.md` - The core narrative, methodology, and outline of the Bachelor Thesis.
-- `docs/performance_analysis/` - Detailed performance metrics, aggregated directly from Weights & Biases across multiple seeds.
-- `docs/wandb_analysis.md` - Guidelines and conventions for dataset evaluation, checkpoint selection strategies (One-Step vs. Rollout weights), and metric interpretation.
+- `thesis.tex` - the full manuscript (compiles with the bundled `neurips_2024.sty` style and `references.bib`).
+- `figures/` - all figures used in the thesis.
+- `tables/` - the generated full-results tables included by the appendix.

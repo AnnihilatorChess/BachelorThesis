@@ -91,7 +91,17 @@ vendor/
 
 *.json
 
-#/docs
+# Private files / folders kept local, not shared via the public repo
+/docs/
+neurips_2024.tex
+IML - BSc_MSc Grading Guidelines - Thesis (B&M).csv
+
+# scripts/ is private, except the PDEBench -> The Well conversion utilities,
+# which the README documents so the PDEBench datasets can be reproduced.
+/scripts/*
+!/scripts/convert_pdebench_swe.py
+!/scripts/convert_pdebench_1d_burgers.py
+
 /datasets
 /papers
 # Ignore environment-specific files

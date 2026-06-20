@@ -1,0 +1,415 @@
+% ============================================================================
+%  references.bib  —  Related-work citations for the Bachelor thesis
+%  "Stabilizing Autoregressive Neural PDE Surrogates: Overcoming the
+%   Capacity-Stability Trade-off via Lightweight Regularization"
+%
+%  Annotated companion: docs/related-work-bibliography.md
+%  Compiled 2026-06-04. Citation details verified against primary sources.
+%  NOTE: a few large-collaboration author lists use "and others" (-> et al.);
+%  verify the full lists against the published versions before final submission
+%  (flagged: ohana2024well, lam2023learning, mccabe2023multiple).
+% ============================================================================
+
+% ----------------------------------------------------------------------------
+% Neural operator theory & architectures
+% ----------------------------------------------------------------------------
+
+@inproceedings{li2021fourier,
+  title     = {Fourier Neural Operator for Parametric Partial Differential Equations},
+  author    = {Li, Zongyi and Kovachki, Nikola and Azizzadenesheli, Kamyar and Liu, Burigede and Bhattacharya, Kaushik and Stuart, Andrew and Anandkumar, Anima},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2021},
+  eprint    = {2010.08895},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@article{kovachki2023neural,
+  title   = {Neural Operator: Learning Maps Between Function Spaces With Applications to {PDE}s},
+  author  = {Kovachki, Nikola and Li, Zongyi and Liu, Burigede and Azizzadenesheli, Kamyar and Bhattacharya, Kaushik and Stuart, Andrew and Anandkumar, Anima},
+  journal = {Journal of Machine Learning Research},
+  volume  = {24},
+  number  = {89},
+  pages   = {1--97},
+  year    = {2023}
+}
+
+@article{lu2021learning,
+  title     = {Learning nonlinear operators via {DeepONet} based on the universal approximation theorem of operators},
+  author    = {Lu, Lu and Jin, Pengzhan and Pang, Guofei and Zhang, Zhongqiang and Karniadakis, George Em},
+  journal   = {Nature Machine Intelligence},
+  volume    = {3},
+  number    = {3},
+  pages     = {218--229},
+  year      = {2021},
+  publisher = {Nature Publishing Group}
+}
+
+@inproceedings{raonic2023convolutional,
+  title     = {Convolutional Neural Operators for Robust and Accurate Learning of {PDE}s},
+  author    = {Raonic, Bogdan and Molinaro, Roberto and De Ryck, Tim and Rohner, Tobias and Bartolucci, Francesca and Alaifari, Rima and Mishra, Siddhartha and de B{\'e}zenac, Emmanuel},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2023},
+  eprint    = {2302.01178},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@inproceedings{ronneberger2015unet,
+  title     = {U-Net: Convolutional Networks for Biomedical Image Segmentation},
+  author    = {Ronneberger, Olaf and Fischer, Philipp and Brox, Thomas},
+  booktitle = {Medical Image Computing and Computer-Assisted Intervention (MICCAI)},
+  pages     = {234--241},
+  year      = {2015},
+  publisher = {Springer},
+  eprint    = {1505.04597},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CV}
+}
+
+@inproceedings{cao2021choose,
+  title     = {Choose a Transformer: Fourier or Galerkin},
+  author    = {Cao, Shuhao},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2021},
+  eprint    = {2105.14995},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@article{li2023transformer,
+  title   = {Transformer for Partial Differential Equations' Operator Learning},
+  author  = {Li, Zijie and Meidani, Kazem and Barati Farimani, Amir},
+  journal = {Transactions on Machine Learning Research (TMLR)},
+  year    = {2023},
+  eprint  = {2205.13671},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@inproceedings{pfaff2021learning,
+  title     = {Learning Mesh-Based Simulation with Graph Networks},
+  author    = {Pfaff, Tobias and Fortunato, Meire and Sanchez-Gonzalez, Alvaro and Battaglia, Peter W.},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2021},
+  eprint    = {2010.03409},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+% ----------------------------------------------------------------------------
+% Autoregressive rollout stabilization & training dynamics
+% ----------------------------------------------------------------------------
+
+@inproceedings{brandstetter2022message,
+  title     = {Message Passing Neural {PDE} Solvers},
+  author    = {Brandstetter, Johannes and Worrall, Daniel E. and Welling, Max},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2022},
+  eprint    = {2202.03376},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@inproceedings{sanchezgonzalez2020learning,
+  title     = {Learning to Simulate Complex Physics with Graph Networks},
+  author    = {Sanchez-Gonzalez, Alvaro and Godwin, Jonathan and Pfaff, Tobias and Ying, Rex and Leskovec, Jure and Battaglia, Peter W.},
+  booktitle = {International Conference on Machine Learning (ICML)},
+  year      = {2020},
+  eprint    = {2002.09405},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@inproceedings{stachenfeld2022learned,
+  title     = {Learned Coarse Models for Efficient Turbulence Simulation},
+  author    = {Stachenfeld, Kimberly and Fielding, Drummond B. and Kochkov, Dmitrii and Cranmer, Miles and Pfaff, Tobias and Godwin, Jonathan and Cui, Can and Ho, Shirley and Battaglia, Peter and Sanchez-Gonzalez, Alvaro},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2022},
+  eprint    = {2112.15275},
+  archivePrefix = {arXiv},
+  primaryClass  = {physics.flu-dyn}
+}
+
+@article{bishop1995training,
+  title     = {Training with Noise is Equivalent to Tikhonov Regularization},
+  author    = {Bishop, Christopher M.},
+  journal   = {Neural Computation},
+  volume    = {7},
+  number    = {1},
+  pages     = {108--116},
+  year      = {1995},
+  publisher = {MIT Press},
+  doi       = {10.1162/neco.1995.7.1.108}
+}
+
+@inproceedings{li2022learning,
+  title     = {Learning Dissipative Dynamics in Chaotic Systems},
+  author    = {Li, Zongyi and Liu-Schiaffini, Miguel and Kovachki, Nikola and Liu, Burigede and Azizzadenesheli, Kamyar and Bhattacharya, Kaushik and Stuart, Andrew and Anandkumar, Anima},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2022},
+  eprint    = {2106.06898},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@inproceedings{um2020solver,
+  title     = {Solver-in-the-Loop: Learning from Differentiable Physics to Interact with Iterative {PDE}-Solvers},
+  author    = {Um, Kiwon and Brand, Robert and Fei, Yun and Holl, Philipp and Thuerey, Nils},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2020},
+  eprint    = {2007.00016},
+  archivePrefix = {arXiv},
+  primaryClass  = {physics.comp-ph}
+}
+
+@inproceedings{lippe2023pderefiner,
+  title     = {{PDE-Refiner}: Achieving Accurate Long Rollouts with Neural {PDE} Solvers},
+  author    = {Lippe, Phillip and Veeling, Bastiaan S. and Perdikaris, Paris and Turner, Richard E. and Brandstetter, Johannes},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2023},
+  eprint    = {2308.05732},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+% ----------------------------------------------------------------------------
+% Benchmark suites
+% ----------------------------------------------------------------------------
+
+@inproceedings{takamoto2022pdebench,
+  title     = {{PDEBench}: An Extensive Benchmark for Scientific Machine Learning},
+  author    = {Takamoto, Makoto and Praditia, Timothy and Leiteritz, Raphael and MacKinlay, Dan and Alesiani, Francesco and Pfl{\"u}ger, Dirk and Niepert, Mathias},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS), Datasets and Benchmarks Track},
+  year      = {2022},
+  eprint    = {2210.07182},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@inproceedings{ohana2024well,
+  title     = {The Well: a Large-Scale Collection of Diverse Physics Simulations for Machine Learning},
+  author    = {Ohana, Ruben and McCabe, Michael and Meyer, Lucas and Morel, Rudy and others},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS), Datasets and Benchmarks Track},
+  year      = {2024},
+  eprint    = {2412.00568},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@article{gupta2023towards,
+  title   = {Towards Multi-spatiotemporal-scale Generalized {PDE} Modeling},
+  author  = {Gupta, Jayesh K. and Brandstetter, Johannes},
+  journal = {Transactions on Machine Learning Research (TMLR)},
+  year    = {2023},
+  eprint  = {2209.15616},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@inproceedings{koehler2024apebench,
+  title     = {{APEBench}: A Benchmark for Autoregressive Neural Emulators of {PDE}s},
+  author    = {Koehler, Felix and Niedermayr, Simon and Westermann, R{\"u}diger and Thuerey, Nils},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS), Datasets and Benchmarks Track},
+  year      = {2024},
+  eprint    = {2411.00180},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+% ----------------------------------------------------------------------------
+% Datasets References
+% ----------------------------------------------------------------------------
+
+% Active Matter
+@article{maddu2024learning,
+  title={Learning fast, accurate, and stable closures of a kinetic theory of an active fluid},
+  author={Maddu, Suryanarayana and Weady, Scott and Shelley, Michael J},
+  journal={Journal of Computational Physics},
+  volume={504},
+  pages={112869},
+  year={2024},
+  publisher={Elsevier}
+}
+
+% Turbulent Radiative Layer
+@article{fielding2020multiphase,
+  title={Multiphase gas and the fractal nature of radiative turbulent mixing layers},
+  author={Fielding, Drummond B and Ostriker, Eve C and Bryan, Greg L and Jermyn, Adam S},
+  journal={The Astrophysical Journal Letters},
+  volume={894},
+  number={2},
+  pages={L24},
+  year={2020},
+  publisher={IOP Publishing}
+}
+
+
+% ----------------------------------------------------------------------------
+% Broader context: PINNs, weather/climate, foundation & diffusion models, AMP
+% ----------------------------------------------------------------------------
+
+@article{raissi2019physics,
+  title     = {Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations},
+  author    = {Raissi, Maziar and Perdikaris, Paris and Karniadakis, George Em},
+  journal   = {Journal of Computational Physics},
+  volume    = {378},
+  pages     = {686--707},
+  year      = {2019},
+  publisher = {Elsevier}
+}
+
+@article{pathak2022fourcastnet,
+  title   = {{FourCastNet}: A Global Data-driven High-resolution Weather Model using Adaptive Fourier Neural Operators},
+  author  = {Pathak, Jaideep and Subramanian, Shashank and Harrington, Peter and Raja, Sanjeev and Chattopadhyay, Ashesh and Mardani, Morteza and Kurth, Thorsten and Hall, David and Li, Zongyi and Azizzadenesheli, Kamyar and Hassanzadeh, Pedram and Kashinath, Karthik and Anandkumar, Animashree},
+  journal = {arXiv preprint arXiv:2202.11214},
+  year    = {2022}
+}
+
+@article{bi2023accurate,
+  title     = {Accurate medium-range global weather forecasting with 3D neural networks},
+  author    = {Bi, Kaifeng and Xie, Lingxi and Zhang, Hengheng and Chen, Xin and Gu, Xiaotao and Tian, Qi},
+  journal   = {Nature},
+  volume    = {619},
+  number    = {7970},
+  pages     = {533--538},
+  year      = {2023},
+  publisher = {Nature Publishing Group}
+}
+
+@article{lam2023learning,
+  title     = {Learning skillful medium-range global weather forecasting},
+  author    = {Lam, Remi and Sanchez-Gonzalez, Alvaro and Willson, Matthew and Wirnsberger, Peter and Fortunato, Meire and Alet, Ferran and Ravuri, Suman and Ewalds, Timo and Eaton-Rosen, Zach and Hu, Weihua and others},
+  journal   = {Science},
+  volume    = {382},
+  number    = {6677},
+  pages     = {1416--1421},
+  year      = {2023},
+  publisher = {American Association for the Advancement of Science}
+}
+
+@article{mccabe2023multiple,
+  title   = {Multiple Physics Pretraining for Physical Surrogate Models},
+  author  = {McCabe, Michael and R{\'e}galdo-Saint Blancard, Bruno and Parker, Liam Holden and Ohana, Ruben and Cranmer, Miles and Bietti, Alberto and Eickenberg, Michael and Golkar, Siavash and Krawezik, Geraud and Lanusse, Fran{\c{c}}ois and others},
+  journal = {arXiv preprint arXiv:2310.02994},
+  year    = {2023}
+}
+
+@inproceedings{herde2024poseidon,
+  title     = {Poseidon: Efficient Foundation Models for {PDE}s},
+  author    = {Herde, Maximilian and Raoni{\'c}, Bogdan and Rohner, Tobias and K{\"a}ppeli, Roger and Molinaro, Roberto and de B{\'e}zenac, Emmanuel and Mishra, Siddhartha},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year      = {2024},
+  eprint    = {2405.19101},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@inproceedings{hao2024dpot,
+  title     = {{DPOT}: Auto-Regressive Denoising Operator Transformer for Large-Scale {PDE} Pre-Training},
+  author    = {Hao, Zhongkai and Su, Chang and Liu, Songming and Berner, Julius and Ying, Chengyang and Su, Hang and Anandkumar, Anima and Song, Jian and Zhu, Jun},
+  booktitle = {International Conference on Machine Learning (ICML)},
+  year      = {2024},
+  eprint    = {2403.03542},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@article{kohl2023benchmarking,
+  title   = {Benchmarking Autoregressive Conditional Diffusion Models for Turbulent Flow Simulation},
+  author  = {Kohl, Georg and Chen, Li-Wei and Thuerey, Nils},
+  journal = {arXiv preprint arXiv:2309.01745},
+  year    = {2023}
+}
+
+@inproceedings{holzschuh2025pde,
+  title     = {{PDE-Transformer}: Efficient and Versatile Transformers for Physics Simulations},
+  author    = {Holzschuh, Benjamin and Liu, Qiang and Kohl, Georg and Thuerey, Nils},
+  booktitle = {International Conference on Machine Learning (ICML)},
+  year      = {2025},
+  eprint    = {2505.24717},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@inproceedings{micikevicius2018mixed,
+  title     = {Mixed Precision Training},
+  author    = {Micikevicius, Paulius and Narang, Sharan and Alben, Jonah and Diamos, Gregory and Elsen, Erich and Garcia, David and Ginsburg, Boris and Houston, Michael and Kuchaiev, Oleksii and Venkatesh, Ganesh and Wu, Hao},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2018},
+  eprint    = {1710.03740},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.AI}
+}
+
+% ----------------------------------------------------------------------------
+% Optimization, datasets, and metrics cited in Methods / Experimental Setup
+% ----------------------------------------------------------------------------
+
+@inproceedings{loshchilov2019decoupled,
+  title     = {Decoupled Weight Decay Regularization},
+  author    = {Loshchilov, Ilya and Hutter, Frank},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2019},
+  eprint    = {1711.05101},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@inproceedings{loshchilov2017sgdr,
+  title     = {{SGDR}: Stochastic Gradient Descent with Warm Restarts},
+  author    = {Loshchilov, Ilya and Hutter, Frank},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2017},
+  eprint    = {1608.03983},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@article{fielding2020multiphase,
+  title     = {Multiphase Gas and the Fractal Nature of Radiative Turbulent Mixing Layers},
+  author    = {Fielding, Drummond B. and Ostriker, Eve C. and Bryan, Greg L. and Jermyn, Adam S.},
+  journal   = {The Astrophysical Journal Letters},
+  volume    = {894},
+  number    = {2},
+  pages     = {L24},
+  year      = {2020},
+  publisher = {IOP Publishing},
+  doi       = {10.3847/2041-8213/ab8d2c}
+}
+
+@article{zhou2024predicting,
+  title     = {Predicting Change, Not States: An Alternate Framework for Neural {PDE} Surrogates},
+  author    = {Zhou, Anthony and Barati Farimani, Amir},
+  journal   = {Computer Methods in Applied Mechanics and Engineering},
+  volume    = {441},
+  year      = {2025},
+  publisher = {Elsevier},
+  eprint    = {2412.13074},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+@article{nayak2025data,
+  title   = {Data-Efficient Time-Dependent {PDE} Surrogates: Graph Neural Simulators vs. Neural Operators},
+  author  = {Nayak, Dibyajyoti and Goswami, Somdatta},
+  journal = {arXiv preprint arXiv:2509.06154},
+  year    = {2025}
+}
+
+% TODO(verify): `maddu2024learning` is cited in the datasets section but has no
+% entry yet. The Active Matter continuum model is most associated with
+% Supekar et al., "Learning hydrodynamic equations for active matter from
+% particle simulations and experiments," PNAS 2023 (arXiv:2101.06568). Confirm
+% which paper the key should point to and add the entry.
+
+@article{mcgreivy2024weak,
+  title     = {Weak baselines and reporting biases lead to over-optimism in machine learning for fluid-related partial differential equations},
+  author    = {McGreivy, Nick and Hakim, Ammar},
+  journal   = {Nature Machine Intelligence},
+  year      = {2024},
+  publisher = {Nature Publishing Group},
+  eprint    = {2407.07218},
+  archivePrefix = {arXiv},
+  primaryClass  = {physics.flu-dyn}
+}
