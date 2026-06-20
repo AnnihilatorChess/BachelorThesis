@@ -127,13 +127,3 @@ To replicate the PDEBench training methodology (using heavily downscaled "small"
 ```bash
 python train.py experiment=fno_pdebench server=local data=pdebench_swe trainer=bptt
 ```
-
----
-
-## Thesis
-
-The written thesis lives in this repository as LaTeX source:
-
-- `thesis.tex` - the full manuscript (compiles with the bundled `neurips_2024.sty` style and `references.bib`).
-- `figures/` - all figures used in the thesis.
-- `tables/` - the generated full-results tables included by the appendix.

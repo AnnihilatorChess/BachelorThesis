@@ -85,55 +85,104 @@ def configure_experiment(
             next_idx = int(prev_runs[-1]) + 1 if len(prev_runs) > 0 else 0
             experiment_folder = osp.join(base_experiment_folder, str(next_idx))
 
-    # Now check for default checkpoint options - only if auto-resume or validation mode is enabled
-    if (
-        (validation_mode or cfg.auto_resume)
-        and osp.exists(experiment_folder)
-        and len(checkpoint_file) == 0
-    ):
-        last_chpt = osp.join(experiment_folder, "checkpoints", "recent.pt")
-        # If there's a checkpoint file, consider this a resume. Otherwise, this is new run.
-        if osp.isfile(last_chpt):
-            checkpoint_file = last_chpt
-    if len(checkpoint_file) > 0:
-        logger.info(f"Checkpoint found, using checkpoint file {checkpoint_file}")
-    if not osp.isfile(checkpoint_file) and len(checkpoint_file) > 0:
-        raise ValueError(
-            f"Checkpoint path provided but checkpoint file {checkpoint_file} not found."
-        )
-    # Now pick a config file to use - either current, override, or related to a different override
-    if len(checkpoint_file) > 0 and len(config_file) == 0:
-        # Check two levels - the parent folder of the checkpoint and the experiment folder
-        checkpoint_path = osp.join(
-            osp.dirname(checkpoint_file), osp.pardir, "extended_config.yaml"
-        )
-        folder_path = osp.join(experiment_folder, "extended_config.yaml")
-        if osp.isfile(checkpoint_path):
-            logger.info(
-                f"Config file exists relative to checkpoint override provided, \
-                            using config file {checkpoint_path}"
+    reeval = bool(cfg.get("reeval_rollout_only", False))
+    if reeval:
+        # Per-timestep re-eval rebuilds the model from the run's EXACT saved config (layer
+        # sizes are run-specific) and loads its own best-rollout checkpoint inside the
+        # trainer. It needs neither recent.pt nor the resume/validation checkpoint search,
+        # so resolve only the config here and leave checkpoint_file empty. Many runs kept
+        # only best_*.pt (no recent.pt), which is why the normal search would fail.
+        if len(config_file) == 0:
+            folder_path = osp.join(experiment_folder, "extended_config.yaml")
+            if osp.isfile(folder_path):
+                config_file = folder_path
+                logger.info(f"Re-eval: loading exact run config from {config_file}")
+            else:
+                logger.warning(
+                    f"Re-eval requested but {folder_path} not found; "
+                    "falling back to CLI config (checkpoint load may fail)."
+                )
+    else:
+        # Now check for default checkpoint options - only if auto-resume or validation mode is enabled
+        if (
+            (validation_mode or cfg.auto_resume)
+            and osp.exists(experiment_folder)
+            and len(checkpoint_file) == 0
+        ):
+            last_chpt = osp.join(experiment_folder, "checkpoints", "recent.pt")
+            # If there's a checkpoint file, consider this a resume. Otherwise, this is new run.
+            if osp.isfile(last_chpt):
+                checkpoint_file = last_chpt
+        if len(checkpoint_file) > 0:
+            logger.info(f"Checkpoint found, using checkpoint file {checkpoint_file}")
+        if not osp.isfile(checkpoint_file) and len(checkpoint_file) > 0:
+            raise ValueError(
+                f"Checkpoint path provided but checkpoint file {checkpoint_file} not found."
             )
-        elif osp.isfile(folder_path):
-            logger.warn(
-                f"Config file not found in checkpoint override path. \
-                        Found in experiment folder, using config file {folder_path}. \
-                        This could lead to weight compatibility issues if the checkpoints do not align with \
-                        the specified folder."
+        # Now pick a config file to use - either current, override, or related to a different override
+        if len(checkpoint_file) > 0 and len(config_file) == 0:
+            # Check two levels - the parent folder of the checkpoint and the experiment folder
+            checkpoint_path = osp.join(
+                osp.dirname(checkpoint_file), osp.pardir, "extended_config.yaml"
             )
-        else:
-            logger.warn(
-                "Checkpoint override provided, but config file not found in checkpoint override path \
-                        or experiment folder. Using default configuration which may not be compatible with checkpoint."
+            folder_path = osp.join(experiment_folder, "extended_config.yaml")
+            if osp.isfile(checkpoint_path):
+                logger.info(
+                    f"Config file exists relative to checkpoint override provided, \
+                                using config file {checkpoint_path}"
+                )
+            elif osp.isfile(folder_path):
+                logger.warning(
+                    f"Config file not found in checkpoint override path. \
+                            Found in experiment folder, using config file {folder_path}. \
+                            This could lead to weight compatibility issues if the checkpoints do not align with \
+                            the specified folder."
+                )
+            else:
+                logger.warning(
+                    "Checkpoint override provided, but config file not found in checkpoint override path \
+                            or experiment folder. Using default configuration which may not be compatible with checkpoint."
+                )
+            # resume = True
+        elif len(config_file) > 0:
+            logger.info(f"Config override provided, using config file {config_file}")
+        elif validation_mode:
+            raise ValueError(
+                f"Validation mode enabled but no checkpoint provided or found in {experiment_folder}."
             )
-        # resume = True
-    elif len(config_file) > 0:
-        logger.log(f"Config override provided, using config file {config_file}")
-    elif validation_mode:
-        raise ValueError(
-            f"Validation mode enabled but no checkpoint provided or found in {experiment_folder}."
-        )
     if len(config_file) > 0:
-        cfg = OmegaConf.load(config_file)
+        loaded = OmegaConf.load(config_file)
+        OmegaConf.set_struct(cfg, False)
+        OmegaConf.set_struct(loaded, False)
+        # Take the saved run config as the base (its model/data/trainer are authoritative),
+        # then backfill ONLY top-level keys it predates (e.g. wandb_group on older runs) from
+        # the CLI cfg. A deep merge would leak the CLI placeholder's FNO model params
+        # (modes1, ...) into a CNO/UNet model whose schema differs -> __init__ TypeError,
+        # so we deliberately do NOT merge nested sections.
+        for key in list(cfg.keys()):
+            if key not in loaded:
+                loaded[key] = cfg[key]
+        # The saved training config has validation_mode=False and no reeval_* keys, so force
+        # the invoking run-control flags back on top.
+        for key in (
+            "validation_mode",
+            "auto_resume",
+            "folder_override",
+            "checkpoint_override",
+            "config_override",
+            "reeval_rollout_only",
+            "reeval_checkpoint",
+            "reeval_split",
+            "reeval_output_dir",
+        ):
+            if key in cfg:
+                loaded[key] = cfg[key]
+        # Route any W&B logging for re-eval to a dedicated project so the comparison
+        # projects (bsc_TRL, AM, SWE_input-10, BUR-DOWN, ...) are never touched. The
+        # driver also runs with WANDB_MODE=disabled, so this is defense-in-depth.
+        if loaded.get("reeval_rollout_only", False) and cfg.get("reeval_wandb_project", ""):
+            loaded["wandb_project_name"] = cfg["reeval_wandb_project"]
+        cfg = loaded
     cfg.trainer.checkpoint_path = checkpoint_file
     # cfg.trainer.resume = resume
     # Create experiment folder if it doesn't already exist

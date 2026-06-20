@@ -198,7 +198,17 @@ def train(
         is_distributed=is_distributed,
     )
     if validation_mode:
-        trainer.validate()
+        reeval_rollout_only = bool(cfg.get("reeval_rollout_only", False))
+        reeval_output_dir = cfg.get("reeval_output_dir", "") or osp.join(
+            cfg.experiment_dir, "_reeval_per_timestep"
+        )
+        trainer.validate(
+            rollout_only=reeval_rollout_only,
+            reeval_checkpoint=cfg.get("reeval_checkpoint", ""),
+            reeval_output_dir=reeval_output_dir,
+            reeval_split=cfg.get("reeval_split", "test"),
+            cfg=cfg,
+        )
     else:
         # Save config to directory folder
         with open(osp.join(experiment_folder, "extended_config.yaml"), "w") as f:

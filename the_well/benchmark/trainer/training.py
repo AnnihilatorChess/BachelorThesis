@@ -230,15 +230,21 @@ class Trainer:
         checkpoint = torch.load(checkpoint_path, weights_only=False)
         state_dict = checkpoint["model_state_dict"]
 
-        # Remove 'model.' or 'module.' prefix if it exists
-        new_state_dict = {}
-        for k, v in state_dict.items():
-            name = k[6:] if k.startswith('model.') else k
-            name = name[7:] if name.startswith('module.') else name
-            new_state_dict[name] = v
-
         if self.model is not None:
-            self.model.load_state_dict(new_state_dict)
+            # Try a direct load first. Our model wrappers (e.g. FNO) legitimately
+            # nest the backbone under `self.model`, so their state_dict keys begin
+            # with `model.` as part of the architecture -- blindly stripping that
+            # prefix corrupts the keys. Only fall back to stripping DDP/compile
+            # wrappers (`module.`/`model.`) when the direct load fails.
+            try:
+                self.model.load_state_dict(state_dict)
+            except RuntimeError:
+                new_state_dict = {}
+                for k, v in state_dict.items():
+                    name = k[6:] if k.startswith('model.') else k
+                    name = name[7:] if name.startswith('module.') else name
+                    new_state_dict[name] = v
+                self.model.load_state_dict(new_state_dict)
         if self.optimizer is not None and "optimizer_state_dit" in checkpoint:
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dit"])
         if self.lr_scheduler is not None and "scheduler_state_dict" in checkpoint and checkpoint["scheduler_state_dict"] is not None:
@@ -484,8 +490,16 @@ class Trainer:
         valid_or_test: str = "valid",
         full: bool = False,
         epoch: int = 0,
+        time_metric_filter: Optional[set] = None,
     ) -> float:
-        """Run validation by looping over the dataloader."""
+        """Run validation by looping over the dataloader.
+
+        ``time_metric_filter``: if given, only these loss names are accumulated into
+        the per-timestep ``time_logs`` (overriding the default ``long_time_metrics``
+        gate). Used by the per-timestep re-eval path to capture NRMSE, which is not
+        in ``long_time_metrics``. The accumulated ``time_logs`` is also stashed on
+        ``self._last_time_logs`` so callers can retrieve the raw [T] curves.
+        """
         self.model.eval()
         validation_loss = 0.0
         field_names = flatten_field_names(self.dset_metadata, include_constants=False)
@@ -524,7 +538,11 @@ class Trainer:
                             sub_loss, k, dset_name, field_names
                         )
                         # TODO get better way to include spectral error.
-                        if k in long_time_metrics or "spectral_error" in k:
+                        if time_metric_filter is not None:
+                            keep_time = k in time_metric_filter
+                        else:
+                            keep_time = k in long_time_metrics or "spectral_error" in k
+                        if keep_time:
                             for key, val in new_time_logs.items():
                                 if key in time_logs:
                                     time_logs[key] += val / denom
@@ -568,6 +586,10 @@ class Trainer:
                     make_video(
                         y_pred[0], y_ref[0], self.dset_metadata, self.viz_folder, epoch
                     )
+
+        # Stash the raw per-timestep curves so re-eval callers can pull them out
+        # without re-plumbing the return signature used by every other caller.
+        self._last_time_logs = time_logs
 
         if self.is_distributed:
             for k, v in loss_dict.items():
@@ -915,12 +937,36 @@ class Trainer:
         del test_dataloader
         del rollout_test_dataloader
 
-    def validate(self):
+    def validate(
+        self,
+        rollout_only: bool = False,
+        reeval_checkpoint: str = "",
+        reeval_output_dir: str = "",
+        reeval_split: str = "test",
+        cfg=None,
+    ):
         """Runs only validation passes - does not save checkpoints or perform training.
 
-        Val/rollout-val are run once on the currently-loaded model weights.
-        Test/rollout-test are run once per saved best_*.pt checkpoint.
+        Default behaviour (``rollout_only=False``): val/rollout-val on the currently
+        loaded weights, then test/rollout-test once per saved ``best_*.pt`` checkpoint
+        (unchanged).
+
+        Per-timestep re-eval (``rollout_only=True``): load a single checkpoint
+        (``reeval_checkpoint``), run only the full autoregressive rollout on the
+        ``reeval_split`` split, capture per-timestep VRMSE + NRMSE (field-averaged and
+        per-field), and save them to a central location (``reeval_output_dir``) with
+        metadata identifying the weights / ablation / model / dataset. See
+        ``docs/per-timestep-reeval.md``.
         """
+        if rollout_only:
+            self._run_rollout_reeval(
+                checkpoint_name=reeval_checkpoint,
+                output_dir=reeval_output_dir,
+                split=reeval_split,
+                cfg=cfg,
+            )
+            return
+
         val_dataloder = self.datamodule.val_dataloader()
         rollout_val_dataloader = self.datamodule.rollout_val_dataloader()
         epoch = self.max_epoch + 1
@@ -949,3 +995,219 @@ class Trainer:
         test_dataloader = self.datamodule.test_dataloader()
         rollout_test_dataloader = self.datamodule.rollout_test_dataloader()
         self._run_final_test_eval(test_dataloader, rollout_test_dataloader, epoch - 1)
+
+    def _reeval_ablation_label(self) -> str:
+        """Derive a normalized ablation tag (baseline / Noise / PF / TB_K / BPTT, combined)."""
+        tags = []
+        if hasattr(self, "bptt_unroll_steps"):
+            tags.append("BPTT")
+        bundle = int(getattr(self, "bundle_size", 1))
+        if bundle > 1:
+            tags.append(f"TB_{bundle}")
+        if bool(getattr(self, "pushforward", False)):
+            tags.append("PF")
+        if bool(getattr(self, "noise_injection", False)):
+            tags.append("Noise")
+        return "-".join(tags) if tags else "baseline"
+
+    def _reeval_metadata(self, cfg, checkpoint_name, ckpt_file, selected_epoch, split):
+        """Assemble the identity record (weights / ablation / model / dataset) saved
+        alongside the per-timestep arrays."""
+        model = self.model
+        # Unwrap torch.compile / DDP to get the real architecture class name.
+        model = getattr(model, "_orig_mod", model)
+        model = getattr(model, "module", model)
+        model_name = type(model).__name__
+
+        ds = self.dset_metadata.dataset_name
+        ablation = self._reeval_ablation_label()
+        meta = {
+            "dataset": ds,
+            "model": model_name,
+            "ablation": ablation,
+            "checkpoint": checkpoint_name,
+            "checkpoint_file": ckpt_file,
+            "selected_epoch": int(selected_epoch),
+            "split": split,
+            "bundle_size": int(getattr(self, "bundle_size", 1)),
+            "pushforward": bool(getattr(self, "pushforward", False)),
+            "noise_injection": bool(getattr(self, "noise_injection", False)),
+            "bptt": hasattr(self, "bptt_unroll_steps"),
+        }
+        # Richer identity straight from the run config when available.
+        if cfg is not None:
+            meta["seed"] = cfg.get("seed", None)
+            meta["experiment_name"] = cfg.get("name", None)
+            meta["wandb_project"] = cfg.get("wandb_project_name", None)
+            meta["wandb_group"] = cfg.get("wandb_group", None) or None
+            meta["run_name"] = cfg.get("run_name", None) or None
+
+        def _safe(s):
+            return "".join(c if (c.isalnum() or c in "._-") else "_" for c in str(s))
+
+        # Run-unique tag: several groups have >5 runs (same-seed reruns), which would
+        # otherwise collide on filestem and silently overwrite. The experiment folder
+        # (<group-dir>/<idx>) uniquely identifies a run; tag with its index + a short
+        # path hash so every run gets its own file, with full provenance kept in meta.
+        import hashlib
+
+        exp_folder = os.path.dirname(self.checkpoint_folder)
+        run_idx = os.path.basename(exp_folder)
+        run_hash = hashlib.md5(exp_folder.encode()).hexdigest()[:6]
+        meta["experiment_folder"] = exp_folder
+        meta["run_id"] = f"{os.path.basename(os.path.dirname(exp_folder))}/{run_idx}"
+
+        seed = meta.get("seed", "NA")
+        meta["filestem"] = "__".join(
+            _safe(p)
+            for p in [
+                ds,
+                model_name,
+                ablation,
+                f"seed{seed}",
+                checkpoint_name,
+                f"run{run_idx}_{run_hash}",
+            ]
+        )
+        return meta
+
+    def _run_rollout_reeval(self, checkpoint_name, output_dir, split="test", cfg=None):
+        """Re-evaluate one checkpoint's full rollout and persist per-timestep VRMSE +
+        NRMSE curves to a central location with identity metadata.
+
+        Regenerates the rollout-curve data deleted during the disk cleanup; see
+        ``docs/per-timestep-reeval.md``. Saves both the field-averaged curve
+        (``full_{metric}``, shape ``[T]``) and the per-field array
+        (``perfield_{metric}``, shape ``[T, C]``) for each of VRMSE and NRMSE.
+        """
+        import json
+
+        import numpy as np
+        from the_well.benchmark.metrics import NRMSE, VRMSE
+
+        if not checkpoint_name:
+            raise ValueError(
+                "rollout re-eval requires reeval_checkpoint (e.g. 'best_rollout_vrmse')"
+            )
+        if not output_dir:
+            raise ValueError("rollout re-eval requires a non-empty reeval_output_dir")
+
+        ckpt_file = (
+            checkpoint_name if checkpoint_name.endswith(".pt") else f"{checkpoint_name}.pt"
+        )
+        ckpt_path = os.path.join(self.checkpoint_folder, ckpt_file)
+        if not os.path.exists(ckpt_path):
+            logger.error(
+                f"Re-eval SKIPPED: checkpoint {ckpt_file} not found in "
+                f"{self.checkpoint_folder} (see Edge Cases in per-timestep-reeval.md)."
+            )
+            return None
+
+        ckpt = torch.load(ckpt_path, map_location=self.device, weights_only=False)
+        self.model.load_state_dict(ckpt["model_state_dict"])
+        selected_epoch = ckpt.get("epoch", -1)
+        logger.info(
+            f"Re-eval: loaded {ckpt_file} (selected epoch={selected_epoch}); "
+            f"rollout on '{split}' split."
+        )
+
+        # Lean suite: the two headline metrics plus the training loss_fn (validation_loop
+        # derives its scalar `validation_loss` from `full_<loss_fn>_T=all`, so it must be
+        # present). No one-step pass, no extended summary metrics (ValidRolloutLength etc.).
+        saved_suite, saved_summary = self.validation_suite, self.summary_suite
+        self.validation_suite = [VRMSE(), NRMSE(), self.loss_fn]
+        self.summary_suite = []
+        dl = None
+        try:
+            dl = (
+                self.datamodule.rollout_val_dataloader()
+                if split == "valid"
+                else self.datamodule.rollout_test_dataloader()
+            )
+            # valid_or_test has no "test" substring -> skips the in-loop plotting that
+            # caused the four-checkpoint overwrite bug; we save from _last_time_logs.
+            self.validation_loop(
+                dl,
+                valid_or_test="rollout_reeval",
+                full=True,
+                epoch=self.max_epoch + 1000,
+                time_metric_filter={"VRMSE", "NRMSE"},
+            )
+            time_logs = getattr(self, "_last_time_logs", {}) or {}
+        finally:
+            self.validation_suite, self.summary_suite = saved_suite, saved_summary
+            if dl is not None:
+                del dl
+
+        ds = self.dset_metadata.dataset_name
+        field_names = flatten_field_names(self.dset_metadata, include_constants=False)
+        arrays = {}
+        for metric in ("VRMSE", "NRMSE"):
+            full_key = f"{ds}/full_{metric}_rollout"
+            if full_key in time_logs:
+                arrays[f"full_{metric}"] = np.asarray(time_logs[full_key], dtype=np.float32)
+            per_field = [
+                np.asarray(time_logs[f"{ds}/{fn}_{metric}_rollout"], dtype=np.float32)
+                for fn in field_names
+                if f"{ds}/{fn}_{metric}_rollout" in time_logs
+            ]
+            if len(per_field) == len(field_names) and per_field:
+                arrays[f"perfield_{metric}"] = np.stack(per_field, axis=-1)  # [T, C]
+
+        if not arrays:
+            logger.error("Re-eval produced no VRMSE/NRMSE curves; nothing saved.")
+            return None
+
+        meta = self._reeval_metadata(cfg, checkpoint_name, ckpt_file, selected_epoch, split)
+        meta["T"] = int(next(iter(arrays.values())).shape[0])
+        meta["fields"] = field_names
+        for metric in ("VRMSE", "NRMSE"):
+            if f"full_{metric}" in arrays:
+                meta[f"mean_full_{metric}"] = float(arrays[f"full_{metric}"].mean())
+
+        os.makedirs(output_dir, exist_ok=True)
+        out_path = os.path.join(output_dir, meta["filestem"] + ".npz")
+        np.savez(
+            out_path,
+            meta=json.dumps(meta),
+            field_names=np.array(field_names),
+            **arrays,
+        )
+        self._append_reeval_manifest(output_dir, meta)
+        logger.info(
+            f"Re-eval saved -> {out_path} "
+            f"(T={meta['T']}, fields={len(field_names)}, "
+            f"mean_full_VRMSE={meta.get('mean_full_VRMSE')}, "
+            f"mean_full_NRMSE={meta.get('mean_full_NRMSE')})"
+        )
+        return out_path
+
+    def _append_reeval_manifest(self, output_dir, meta):
+        """Append one JSON line per re-eval to a central manifest for easy querying.
+
+        JSONL (one record per line) is append-safe across sequential runs and loads
+        directly with ``pandas.read_json(path, lines=True)``.
+        """
+        import json
+
+        manifest_path = os.path.join(output_dir, "manifest.jsonl")
+        record = {
+            "filestem": meta["filestem"],
+            "dataset": meta["dataset"],
+            "model": meta["model"],
+            "ablation": meta["ablation"],
+            "checkpoint": meta["checkpoint"],
+            "selected_epoch": meta["selected_epoch"],
+            "seed": meta.get("seed"),
+            "wandb_group": meta.get("wandb_group"),
+            "wandb_project": meta.get("wandb_project"),
+            "run_id": meta.get("run_id"),
+            "experiment_folder": meta.get("experiment_folder"),
+            "split": meta["split"],
+            "T": meta.get("T"),
+            "mean_full_VRMSE": meta.get("mean_full_VRMSE"),
+            "mean_full_NRMSE": meta.get("mean_full_NRMSE"),
+            "file": meta["filestem"] + ".npz",
+        }
+        with open(manifest_path, "a") as f:
+            f.write(json.dumps(record) + "\n")

@@ -4,3 +4,13 @@ folder_override: "" # Override the folder name for the experiment - considered "
 checkpoint_override: "" #"experiments/turbulent_radiative_layer_2D-unet_classic-UNetClassic-0.001/1/checkpoints/best.pt" # Override search path for a resume checkpoint - considered "resume" if populated
 config_override: "" # Override the search path for a config file
 validation_mode: False
+
+# Per-timestep rollout-loss re-evaluation (only consulted when validation_mode=True).
+# See docs/per-timestep-reeval.md. With reeval_rollout_only=True, validate() skips the
+# short val + one-step + four-checkpoint test loop and instead loads a single checkpoint,
+# runs only the full rollout, and saves per-timestep VRMSE+NRMSE arrays centrally.
+reeval_rollout_only: False           # True = per-timestep re-eval mode; False = default validate()
+reeval_checkpoint: ""                # e.g. "best_rollout_vrmse" (Well) or "best_rollout_nrmse" (PDEBench); ".pt" optional
+reeval_split: "test"                 # "test" (held-out test split, per spec) or "valid"
+reeval_output_dir: ""                # central output dir; empty = "<experiment_dir>/_reeval_per_timestep"
+reeval_wandb_project: "bsc_reeval_per_timestep"  # in re-eval mode, W&B project is forced to this so the comparison projects are never touched (the driver also runs WANDB_MODE=disabled)
