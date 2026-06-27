@@ -1,6 +1,6 @@
 # Stabilizing Autoregressive Neural PDE Surrogates
 
-Codebase and thesis source for the Bachelor's Thesis **"Stabilizing Autoregressive Neural PDE Surrogates: An Ablation and Capacity Trade-off Study"** (Johannes Kepler University Linz).
+Codebase and thesis source for the Bachelor's Thesis **"Stabilizing Autoregressive Neural PDE Surrogates: A Benchmark Study"** (Johannes Kepler University Linz).
 
 This repository evaluates lightweight stabilization techniques (Temporal Bundling, Pushforward, Noise Injection, and their combination) across diverse PDE datasets and architectures to prevent autoregressive error accumulation. The central findings are that these techniques reliably improve rollout accuracy at close to one-step training cost, and that the memory they save relative to full Backpropagation Through Time (BPTT) can be reinvested into larger models that outperform the VRAM-constrained models BPTT is restricted to on the simpler PDEs.
 
